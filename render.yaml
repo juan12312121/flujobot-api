@@ -31,7 +31,14 @@ services:
       - key: OPENROUTER_API_KEY
         sync: false
       - key: OPENROUTER_MODELOS
-        value: nvidia/nemotron-3-super-120b-a12b:free,qwen/qwen3.8-27b:free,google/gemma-4-31b-it:free,openrouter/free
+        value: nvidia/nemotron-3-super-120b-a12b:free,qwen/qwen3.8-27b:free,google/gemma-4-31b-it:free
+      # Imágenes en Cloudinary (mismas llaves que Corcho; cada app usa su carpeta)
+      - key: CLOUDINARY_CLOUD_NAME
+        value: dowwatxfe
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
       # Opcionales: n8n y Evolution (vacíos = "Publicar" genera el JSON para importar)
       - key: N8N_URL
         sync: false

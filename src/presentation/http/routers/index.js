@@ -104,3 +104,10 @@ export class ChatPublicoRouter extends BaseRouter {
     this.post('/:clave/mensajes', 'mensaje');
   }
 }
+
+/** Imágenes: el navegador pide una firma y sube directo a Cloudinary. */
+export class ArchivoRouter extends BaseRouter {
+  rutas() {
+    this.post('/firma', 'firma');
+  }
+}

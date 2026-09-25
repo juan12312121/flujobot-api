@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { TIPOS_DE_NODO } from '../../../domain/flujo/tiposDeNodo.js';
 import { PLANTILLAS } from '../../../domain/flujo/plantillas.js';
 import { GIROS } from '../../../domain/empresa/giros.js';
+import { USOS_IMAGEN } from '../../../application/use-cases/archivos/FirmarSubidaImagen.js';
 
 const texto = (max = 200) => z.string().trim().min(1, 'Requerido').max(max);
 const email = z.string().trim().toLowerCase().email('Correo inválido');
@@ -184,4 +185,8 @@ export const web = {
     texto: z.string().trim().min(1).max(1000),
     nombre: z.string().trim().max(60).optional(),
   }),
+};
+
+export const archivos = {
+  firma: z.object({ uso: z.enum(USOS_IMAGEN) }),
 };

@@ -16,6 +16,7 @@ import { construirTarea } from '../infrastructure/n8n/construirTarea.js';
 import { EvolutionCliente } from '../infrastructure/whatsapp/EvolutionCliente.js';
 import { normalizarEntrante } from '../infrastructure/whatsapp/normalizarEntrante.js';
 import { OpenRouterCliente } from '../infrastructure/ia/OpenRouterCliente.js';
+import { CloudinaryAlmacen } from '../infrastructure/storage/CloudinaryAlmacen.js';
 
 import { MotorDeFlujo } from '../application/services/MotorDeFlujo.js';
 import { AtenderMensaje } from '../application/services/AtenderMensaje.js';
@@ -33,6 +34,7 @@ import * as citasUC from '../application/use-cases/citas/index.js';
 import * as webUC from '../application/use-cases/web/index.js';
 import { ProcesarMensajeEntrante } from '../application/use-cases/motor/ProcesarMensajeEntrante.js';
 import { ObtenerResumen } from '../application/use-cases/tablero/ObtenerResumen.js';
+import { FirmarSubidaImagen } from '../application/use-cases/archivos/FirmarSubidaImagen.js';
 import { ObtenerResultados } from '../application/use-cases/bots/ObtenerResultados.js';
 import { GenerarFlujoConIA } from '../application/use-cases/asistente/GenerarFlujoConIA.js';
 import { GenerarTareaN8n, PublicarTareaN8n } from '../application/use-cases/asistente/tareas.js';
@@ -74,6 +76,7 @@ export async function crearContenedor(config) {
     }),
     normalizar: normalizarEntrante,
     construirTarea,
+    almacen: new CloudinaryAlmacen({ cloudName: config.CLOUDINARY_CLOUD_NAME, apiKey: config.CLOUDINARY_API_KEY, apiSecret: config.CLOUDINARY_API_SECRET }),
     ia: new OpenRouterCliente({ apiKey: config.OPENROUTER_API_KEY, modelos: config.OPENROUTER_MODELOS, maxTokens: config.OPENROUTER_MAX_TOKENS, urlSitio: config.URL_FRONTEND }),
   };
   const respondedor = new RespondedorIA({ ia: servicios.ia, productos: repos.productos });
@@ -88,6 +91,7 @@ export async function crearContenedor(config) {
     obtenerResumen: new ObtenerResumen(deps),
     generarFlujoConIA: new GenerarFlujoConIA(deps),
     obtenerResultados: new ObtenerResultados(deps),
+    firmarSubidaImagen: new FirmarSubidaImagen(deps),
     generarTareaN8n: new GenerarTareaN8n(deps),
     publicarTareaN8n: new PublicarTareaN8n(deps),
     ...instanciar(usuariosUC, deps),
@@ -112,6 +116,7 @@ export async function crearContenedor(config) {
     ['/empresa', new R.EmpresaRouter(new C.EmpresaController(casos), conSesion).registrar()],
     ['/citas', new R.CitaRouter(new C.CitaController(casos), conSesion).registrar()],
     ['/asistente', new R.AsistenteRouter(new C.AsistenteController(casos), { middlewares: [limiteIA, autenticar(tokens)] }).registrar()],
+    ['/archivos', new R.ArchivoRouter(new C.ArchivoController(casos), conSesion).registrar()],
     ['/tablero', new R.TableroRouter(new C.TableroController(casos), conSesion).registrar()],
     ['/motor', new R.MotorRouter(new C.MotorController(casos), { middlewares: [limiteMotor] }).registrar()],
   ];

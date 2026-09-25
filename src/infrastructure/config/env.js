@@ -27,12 +27,17 @@ const esquema = z.object({
   EVOLUTION_URL: url.optional(),
   EVOLUTION_API_KEY: z.string().optional(),
 
+  /** Imágenes (productos, logo, mensajes) en Cloudinary. Sin las tres, subir imágenes responde 503 y se puede pegar una URL. */
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
+
   /** Asistente de IA (OpenRouter). Sin la llave, el asistente responde 503 y todo lo demás funciona. */
   OPENROUTER_API_KEY: z.string().optional(),
   /** Modelos en orden de preferencia, separados por coma. Si uno falla o está saturado se usa el siguiente. */
   OPENROUTER_MODELOS: z
     .string()
-    .default('nvidia/nemotron-3-super-120b-a12b:free,qwen/qwen3.8-27b:free,google/gemma-4-31b-it:free,openrouter/free')
+    .default('nvidia/nemotron-3-super-120b-a12b:free,qwen/qwen3.8-27b:free,google/gemma-4-31b-it:free')
     .transform((v) => v.split(',').map((m) => m.trim()).filter(Boolean)),
   /** Tope de la respuesta de la IA. Un flujo mediano ocupa ~2,500 tokens. */
   OPENROUTER_MAX_TOKENS: z.coerce.number().int().min(1000).max(32000).default(8000),

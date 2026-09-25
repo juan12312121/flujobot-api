@@ -81,3 +81,7 @@ export class ChatWebController extends BaseController {
   publico = this.accion('obtenerChatPublico');
   mensaje = this.accion('enviarMensajeChatPublico', { body: esquemas.web.mensaje });
 }
+
+export class ArchivoController extends BaseController {
+  firma = this.accion('firmarSubidaImagen', { body: esquemas.archivos.firma });
+}

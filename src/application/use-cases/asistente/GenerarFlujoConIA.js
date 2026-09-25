@@ -33,6 +33,10 @@ Conviertes lo que la persona describe con sus palabras en un FLUJO de bloques co
 {{cita.fecha}}, {{cita.hora}}, {{cita.folio}} y cualquier variable que guarde un bloque "pregunta".
 
 ## Reglas
+0. Haz SOLO lo que la persona pidió. NO agregues funciones que no mencionó (reservaciones, citas, asesor,
+   preguntas frecuentes, ubicación...), aunque el giro del negocio las sugiera: los datos de la empresa son contexto, no pedidos.
+   Si el bot tiene UN solo propósito (p. ej. "tomar pedidos"), NO pongas un menú inicial: saluda y ve directo a eso.
+   Usa un menú inicial solo si la persona pidió 2 o más cosas distintas.
 1. Conecta TODAS las salidas de todos los bloques. Cada rama termina en "fin", en "humano" o regresa a un menú.
 2. Después de mostrar información (horarios, precios, ubicación) ofrece volver al menú o terminar.
 3. Textos en español de México, cordiales, breves y claros, SIN emojis. Usa *negritas* de WhatsApp con moderación.
@@ -107,7 +111,10 @@ export class GenerarFlujoConIA extends UseCase {
       `## Datos de la empresa`,
       `- Nombre: ${empresa?.nombre ?? ''}`,
       `- Giro: ${GIROS[empresa?.giro]?.nombre ?? 'otro'}`,
-      `- Le llama a lo que ofrece "${t.items ?? 'Productos'}", a los pedidos "${t.pedidos ?? 'Pedidos'}" y a las citas "${t.citas ?? 'Citas'}".`,
+      // Solo vocabulario para los textos: si se da como lista de "funciones", la IA las agrega aunque nadie las pidió
+      `- Palabras que usa el negocio en sus textos: lo que ofrece = "${t.items ?? 'Productos'}", un pedido = "${t.pedido ?? 'Pedido'}"${
+        empresa?.modulos?.agenda ? `, una cita = "${t.cita ?? 'Cita'}"` : ''
+      }.`,
       h ? `- Horario: ${h.dias.map((d) => DIAS[d]).join(', ')} de ${h.apertura} a ${h.cierre}.` : '',
       catalogo.length
         ? `- Catálogo (${catalogo.length}): ${catalogo
