@@ -1,0 +1,31 @@
+{
+  "name": "flujobot-api",
+  "version": "1.0.0",
+  "description": "FlujoBot: bots de WhatsApp multiempresa diseñados con drag & drop y ejecutados por n8n (Express, Clean Architecture, MongoDB/Mongoose)",
+  "type": "module",
+  "main": "src/main/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node --watch src/main/server.js",
+    "start": "node src/main/server.js",
+    "dev:memoria": "node scripts/servidor-memoria.js",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "e2e": "node scripts/e2e.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^10.1.2"
+  }
+}

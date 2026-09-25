@@ -1,0 +1,45 @@
+# Render (Blueprint): New + → Blueprint → elige el repo flujobot-api.
+# Las variables con "sync: false" las pide Render al crear el servicio (no van en git).
+services:
+  - type: web
+    name: flujobot-api
+    runtime: node
+    plan: free
+    # Oregon: la misma región que el cluster de Atlas (us-west-2) → menos latencia
+    region: oregon
+    # Sin dependencias de desarrollo: mongodb-memory-server descargaría un MongoDB completo
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /salud
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRA
+        value: 7d
+      # Dominio del panel en Vercel (si cambia, actualízalo aquí y en URL_FRONTEND)
+      - key: CORS_ORIGEN
+        value: https://flujobot-web.vercel.app
+      - key: URL_FRONTEND
+        value: https://flujobot-web.vercel.app
+      # Dirección con la que n8n llama al motor del bot
+      - key: API_URL_PUBLICA
+        value: https://flujobot-api.onrender.com
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODELOS
+        value: nvidia/nemotron-3-super-120b-a12b:free,qwen/qwen3.8-27b:free,google/gemma-4-31b-it:free,openrouter/free
+      # Opcionales: n8n y Evolution (vacíos = "Publicar" genera el JSON para importar)
+      - key: N8N_URL
+        sync: false
+      - key: N8N_API_KEY
+        sync: false
+      - key: N8N_EVOLUTION_CREDENCIAL_ID
+        sync: false
+      - key: EVOLUTION_URL
+        sync: false
+      - key: EVOLUTION_API_KEY
+        sync: false
