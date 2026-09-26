@@ -139,7 +139,8 @@ export class PublicarBot extends UseCase {
     const r = await this.publicador.publicar(bot);
     const avisos = [];
     if (r.modo === 'manual') avisos.push('n8n no está configurado: descarga el workflow e impórtalo en tu n8n.');
-    if (r.webhookUrl && this.evolution.configurado) {
+    // Sin WhatsApp vinculado todavía no existe la instancia: el webhook se apunta al conectar
+    if (r.webhookUrl && this.evolution.configurado && bot.whatsapp !== 'desconectado') {
       await this.evolution.configurarWebhook(bot.instancia, r.webhookUrl).catch((e) => avisos.push(`No se pudo apuntar el webhook de WhatsApp: ${e.message}`));
     }
     const actualizado = await this.bots.actualizar(actor.empresaId, botId, {
