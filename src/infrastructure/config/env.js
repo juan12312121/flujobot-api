@@ -42,6 +42,29 @@ const esquema = z.object({
   /** Tope de la respuesta de la IA. Un flujo mediano ocupa ~2,500 tokens. */
   OPENROUTER_MAX_TOKENS: z.coerce.number().int().min(1000).max(32000).default(8000),
   URL_FRONTEND: url.default('http://localhost:4400'),
+
+  /** Llave para cifrar los secretos que pegan las empresas (pagos, Telegram, Meta). Sin ella se usa JWT_SECRET. */
+  CIFRADO_LLAVE: z.string().min(16).optional(),
+  /** Correos con acceso al panel de superadministrador (separados por coma). */
+  SUPERADMINS: z
+    .string()
+    .default('')
+    .transform((v) => v.split(',').map((c) => c.trim().toLowerCase()).filter(Boolean)),
+  /** Secreto para POST /interno/tick (lo llama un monitor o cron para correr las tareas programadas). */
+  CRON_SECRETO: z.string().min(16).optional(),
+  /** Programador interno (recordatorios, campañas, esperas, carritos). "no" lo apaga (p. ej. en pruebas). */
+  PROGRAMADOR: z.enum(['si', 'no']).default('si'),
+  PROGRAMADOR_SEGUNDOS: z.coerce.number().int().min(10).max(3600).default(60),
+
+  /** Notas de voz: Whisper en Groq (nivel gratuito). Sin llave el bot pide que le escriban. */
+  GROQ_API_KEY: z.string().optional(),
+
+  /** App de Meta de FlujoBot (Messenger / Instagram). */
+  META_APP_SECRET: z.string().optional(),
+  META_VERIFY_TOKEN: z.string().optional(),
+
+  /** Cuenta de Mercado Pago de FlujoBot para cobrar los planes. Sin ella, el superadmin activa planes a mano. */
+  MP_PLATAFORMA_TOKEN: z.string().optional(),
 });
 
 const resultado = esquema

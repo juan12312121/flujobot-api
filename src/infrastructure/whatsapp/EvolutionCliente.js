@@ -1,8 +1,9 @@
 import { ServicioExternoError, NoConfiguradoError } from '../../application/shared/errors.js';
 
 /**
- * Evolution API (v2): una instancia por bot. Aquí solo se administra la conexión
- * (crear, QR, estado, webhook); los mensajes los manda n8n.
+ * Evolution API (v2): una instancia por bot. Aquí se administra la conexión (crear, QR, estado, webhook).
+ * Las RESPUESTAS a un mensaje las manda n8n; lo que el bot manda por su cuenta (avisos, recordatorios,
+ * campañas, asesor desde el panel) sale directo desde aquí.
  */
 export class EvolutionCliente {
   constructor({ url, apiKey }) {
@@ -63,6 +64,22 @@ export class EvolutionCliente {
     await this.#llamar('POST', `/webhook/set/${encodeURIComponent(instancia)}`, {
       webhook: { enabled: true, url, webhookByEvents: false, webhookBase64: false, events: ['MESSAGES_UPSERT'] },
     });
+  }
+
+  async enviarTexto(instancia, numero, texto) {
+    await this.#llamar('POST', `/message/sendText/${encodeURIComponent(instancia)}`, { number: numero, text: texto });
+  }
+
+  async enviarImagen(instancia, numero, url, texto = '') {
+    await this.#llamar('POST', `/message/sendMedia/${encodeURIComponent(instancia)}`, { number: numero, mediatype: 'image', media: url, caption: texto });
+  }
+
+  /** Nota de voz: Evolution la descifra y la entrega en base64. */
+  async descargarMedia(instancia, mensaje) {
+    const r = await this.#llamar('POST', `/chat/getBase64FromMediaMessage/${encodeURIComponent(instancia)}`, { message: { key: mensaje.key }, convertToMp4: false });
+    if (!r.base64) throw new ServicioExternoError('Evolution no entregó el audio');
+    const tipo = (r.mimetype ?? 'audio/ogg').split(';')[0];
+    return { datos: Buffer.from(r.base64, 'base64'), tipo, nombre: tipo.includes('mp4') ? 'voz.mp4' : 'voz.ogg' };
   }
 
   async desconectar(instancia) {

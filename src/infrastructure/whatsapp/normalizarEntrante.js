@@ -1,5 +1,6 @@
 /**
- * Convierte lo que manda Evolution API (evento messages.upsert) a { contacto, nombre, texto }.
+ * Convierte lo que manda Evolution API (evento messages.upsert) a { contacto, nombre, texto }
+ * (o { contacto, nombre, audio: { key } } si es una nota de voz, para transcribirla).
  * También acepta la forma simple { contacto, nombre, texto } para probar con curl o desde otro n8n.
  * Devuelve { ignorar: 'motivo' } para lo que el bot no debe contestar (grupos, mensajes propios, estados).
  */
@@ -20,9 +21,12 @@ export function normalizarEntrante(cuerpo) {
   const jid = [key.remoteJid, key.remoteJidAlt].find((j) => typeof j === 'string' && j.endsWith('@s.whatsapp.net'));
   if (!jid) return { ignorar: key.remoteJid?.endsWith('@g.us') ? 'grupo' : 'sin número' };
 
+  const nombre = data.pushName ?? '';
+  const contacto = soloDigitos(jid.split('@')[0]);
+  if (data.message?.audioMessage) return { contacto, nombre, audio: { key } };
   const texto = textoDelMensaje(data.message ?? {});
   if (texto == null) return { ignorar: `tipo ${data.messageType ?? 'desconocido'}` };
-  return { contacto: soloDigitos(jid.split('@')[0]), nombre: data.pushName ?? '', texto };
+  return { contacto, nombre, texto };
 }
 
 function textoDelMensaje(m) {

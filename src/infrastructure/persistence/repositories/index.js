@@ -10,7 +10,16 @@ import {
   CitaModel,
   EstadisticaModel,
   ContadorModel,
+  TrabajoModel,
+  ContactoModel,
+  CampanaModel,
+  EncuestaModel,
+  VersionModel,
+  ActividadModel,
+  UsoModel,
 } from '../models/index.js';
+
+const oid = (id) => new mongoose.Types.ObjectId(String(id));
 
 const escaparRegex = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -39,6 +48,18 @@ export class EmpresaRepository {
 
   async borrar(id) {
     await EmpresaModel.deleteOne({ _id: id });
+  }
+
+  /** Con las llaves cifradas de cobro (solo para el servicio de cobros). */
+  async conSecretosDePago(id) {
+    if (!mongoose.isValidObjectId(id)) return null;
+    return aObjeto(await EmpresaModel.findById(id).select('+pagos.llaveCifrada +pagos.secretoWebhookCifrado').lean());
+  }
+
+  /** Superadministrador: todas las empresas (sin secretos). */
+  async listarTodas({ texto } = {}) {
+    const filtro = texto ? { nombre: { $regex: escaparRegex(texto), $options: 'i' } } : {};
+    return (await EmpresaModel.find(filtro).sort({ createdAt: -1 }).limit(1000).lean()).map(aObjeto);
   }
 }
 
@@ -127,6 +148,37 @@ export class BotRepository extends MongoRepository {
   async existeInstancia(instancia) {
     return Boolean(await BotModel.exists({ instancia }));
   }
+
+  /** Con los secretos de los canales (Telegram, Messenger/Instagram) para mandar y validar mensajes. */
+  async conSecretos(botId) {
+    if (!mongoose.isValidObjectId(botId)) return null;
+    return aObjeto(await BotModel.findById(botId).select('+tokenMotor +telegram.tokenCifrado +telegram.secreto +meta.tokenCifrado').lean());
+  }
+
+  /** Webhook de Meta: el id de la página (Messenger) o de la cuenta de Instagram que recibió el mensaje. */
+  async porCuentaMeta(id) {
+    return aObjeto(
+      await BotModel.findOne({ 'meta.activo': true, $or: [{ 'meta.paginaId': String(id) }, { 'meta.instagramId': String(id) }] })
+        .select('+meta.tokenCifrado')
+        .lean(),
+    );
+  }
+
+  async conRecuperacion() {
+    return (await BotModel.find({ 'recuperacion.activo': true }, 'empresaId nombre instancia publicado recuperacion').lean()).map(aObjeto);
+  }
+
+  /** Bot que avisa por la empresa cuando algo no viene de un bot (p. ej. una cita capturada en el panel). */
+  async principal(empresaId) {
+    const bots = await BotModel.find({ empresaId, publicado: { $ne: null } }, 'nombre instancia whatsapp publicado.version').sort({ whatsapp: 1, createdAt: 1 }).lean();
+    const conectado = bots.find((b) => b.whatsapp === 'conectado') ?? bots[0];
+    return conectado ? aObjeto(conectado) : null;
+  }
+
+  async contarTodos() {
+    const filas = await BotModel.aggregate([{ $group: { _id: '$empresaId', bots: { $sum: 1 } } }]);
+    return new Map(filas.map((f) => [String(f._id), f.bots]));
+  }
 }
 
 export class ConversacionRepository extends MongoRepository {
@@ -168,6 +220,50 @@ export class ConversacionRepository extends MongoRepository {
   async borrarDeCanal(empresaId, botId, canal) {
     await ConversacionModel.deleteMany({ empresaId, botId, canal });
   }
+
+  /**
+   * Mensajes que no salieron del motor (asesor, aviso, recordatorio, campaña). Crea la conversación
+   * si el contacto nunca había escrito por ese canal. `cambios` se guarda junto (p. ej. estado, pendiente).
+   */
+  async agregarMensajes({ empresaId, botId, canal, contacto, nombre }, mensajes, cambios = {}) {
+    const doc = await ConversacionModel.findOneAndUpdate(
+      { botId, canal, contacto },
+      {
+        $set: cambios,
+        $setOnInsert: { empresaId, nombre: nombre ?? '', ...('estado' in cambios ? {} : { estado: 'nueva' }) },
+        $push: { historial: { $each: mensajes, $slice: -100 } },
+      },
+      { upsert: true, new: true },
+    ).lean();
+    return aObjeto(doc);
+  }
+
+  /** Chat web: lo que el bot o un asesor le escribió al visitante después de `desde`. */
+  async mensajesDesde(botId, canal, contacto, desde) {
+    const doc = await ConversacionModel.findOne({ botId, canal, contacto }, 'historial estado').lean();
+    const lista = (doc?.historial ?? []).filter((m) => m.de !== 'contacto' && new Date(m.fecha) > desde);
+    return { mensajes: lista, estado: doc?.estado ?? 'nueva' };
+  }
+
+  /** Carritos abandonados de un bot: con productos, sin respuesta desde hace `horas` (hasta 2 días) y sin recordar. */
+  async carritosAbandonados(botId, { desde, hasta, canales }) {
+    const docs = await ConversacionModel.find({
+      botId,
+      canal: { $in: canales },
+      estado: 'activa',
+      'carrito.0': { $exists: true },
+      carritoRecordado: null,
+      actualizadoEn: { $gte: desde, $lte: hasta },
+    })
+      .limit(50)
+      .lean();
+    return docs.map(aObjeto);
+  }
+
+  /** Segmento "no terminó su pedido": dejaron productos en el carrito en los últimos `dias`. */
+  async conCarritoDesde(empresaId, desde) {
+    return ConversacionModel.find({ empresaId, 'carrito.0': { $exists: true }, actualizadoEn: { $gte: desde } }, 'canal contacto nombre').lean();
+  }
 }
 
 export class PedidoRepository extends MongoRepository {
@@ -179,6 +275,15 @@ export class PedidoRepository extends MongoRepository {
   async crear(datos) {
     const folio = await siguienteFolio('pedido', 'P', datos.empresaId);
     return super.crear(datos.empresaId, { ...datos, folio });
+  }
+
+  /** Últimos pedidos reales de un cliente (para "¿cómo va mi pedido?"). */
+  async delContacto(empresaId, contacto, limite = 3) {
+    return this.listar(empresaId, { contacto, canal: { $ne: 'simulador' } }, { orden: { createdAt: -1 }, limite });
+  }
+
+  async porFolio(empresaId, folio) {
+    return aObjeto(await PedidoModel.findOne({ empresaId, folio }).lean());
   }
 
   async ventasDesde(empresaId, desde) {
@@ -203,6 +308,12 @@ export class CitaRepository extends MongoRepository {
   /** Citas que ocupan agenda (menos canceladas y las de prueba del simulador) en el rango, solo con inicio y fin. */
   async ocupadas(empresaId, desde, hasta) {
     return CitaModel.find({ empresaId, canal: { $ne: 'simulador' }, estado: { $nin: ['cancelada'] }, inicio: { $lt: hasta }, fin: { $gt: desde } }, 'inicio fin').lean();
+  }
+
+  /** Citas del cliente de hoy en adelante (más la de hace un rato, por si pregunta llegando). */
+  async proximasDelContacto(empresaId, contacto, ahora) {
+    const filtro = { contacto, canal: { $ne: 'simulador' }, inicio: { $gte: new Date(ahora.getTime() - 2 * 3600_000) } };
+    return this.listar(empresaId, filtro, { orden: { inicio: 1 }, limite: 3 });
   }
 
   async enRango(empresaId, { desde, hasta, estado, botId }) {
@@ -233,5 +344,184 @@ export class EstadisticaRepository {
 
   async borrarDeBot(empresaId, botId) {
     await EstadisticaModel.deleteMany({ empresaId, botId });
+  }
+}
+
+/** Cola de tareas programadas. Varias instancias de la API pueden tomar trabajos sin pisarse (toma atómica). */
+export class TrabajoRepository {
+  /** Crea la tarea, o la reprograma si ya había una pendiente con la misma clave. */
+  async programar({ empresaId = null, tipo, clave, ejecutarEn, datos = {} }) {
+    if (clave) {
+      const doc = await TrabajoModel.findOneAndUpdate(
+        { clave, estado: 'pendiente' },
+        { $set: { empresaId, tipo, ejecutarEn, datos } },
+        { upsert: true, new: true },
+      ).lean();
+      return aObjeto(doc);
+    }
+    return aObjeto((await TrabajoModel.create({ empresaId, tipo, ejecutarEn, datos })).toObject());
+  }
+
+  /** Cancela las pendientes cuya clave empieza con `prefijo` (p. ej. "cita:<id>:"). */
+  async cancelar(prefijo) {
+    const r = await TrabajoModel.updateMany({ estado: 'pendiente', clave: { $regex: `^${escaparRegex(prefijo)}` } }, { $set: { estado: 'cancelado' } });
+    return r.modifiedCount;
+  }
+
+  /** Toma UNA tarea vencida y la marca en curso. Las que se quedaron "en curso" más de 10 min se reintentan. */
+  async tomar(ahora) {
+    const doc = await TrabajoModel.findOneAndUpdate(
+      {
+        $or: [
+          { estado: 'pendiente', ejecutarEn: { $lte: ahora } },
+          { estado: 'en_curso', tomadoEn: { $lt: new Date(ahora.getTime() - 10 * 60_000) }, intentos: { $lt: 3 } },
+        ],
+      },
+      { $set: { estado: 'en_curso', tomadoEn: ahora }, $inc: { intentos: 1 } },
+      { sort: { ejecutarEn: 1 }, new: true },
+    ).lean();
+    return aObjeto(doc);
+  }
+
+  async terminar(id, { error } = {}) {
+    await TrabajoModel.updateOne({ _id: id }, { $set: error ? { estado: 'error', error: String(error).slice(0, 500) } : { estado: 'hecho', error: '' } });
+  }
+
+  async pendientes(filtro = {}) {
+    return (await TrabajoModel.find({ estado: 'pendiente', ...filtro }).sort({ ejecutarEn: 1 }).limit(200).lean()).map(aObjeto);
+  }
+}
+
+/** Contactos de cada empresa (uno por canal + número/usuario). */
+export class ContactoRepository extends MongoRepository {
+  constructor() {
+    super(ContactoModel);
+  }
+
+  /** Cada mensaje real actualiza al contacto (lo crea la primera vez). */
+  async registrar({ empresaId, botId, canal, contacto, nombre }) {
+    await ContactoModel.updateOne(
+      { empresaId, canal, contacto },
+      { $set: { ultimoMensaje: new Date(), ...(nombre ? { nombre } : {}), ...(botId ? { botId } : {}) }, $setOnInsert: { primerMensaje: new Date() } },
+      { upsert: true },
+    );
+  }
+
+  async permiso({ empresaId, canal, contacto }, acepta) {
+    const cambios = acepta ? { aceptaPromos: true, permisoEn: new Date(), bajaEn: null } : { aceptaPromos: false, bajaEn: new Date() };
+    await ContactoModel.updateOne({ empresaId, canal, contacto }, { $set: cambios, $setOnInsert: { primerMensaje: new Date(), ultimoMensaje: new Date() } }, { upsert: true });
+  }
+
+  async compra({ empresaId, canal, contacto }) {
+    await ContactoModel.updateOne({ empresaId, canal, contacto }, { $set: { ultimaCompra: new Date() }, $inc: { compras: 1 } });
+  }
+
+  /** Contactos con permiso por los canales indicados, más un filtro extra del segmento. */
+  async conPermiso(empresaId, canales, filtro = {}) {
+    return ContactoModel.find({ empresaId, aceptaPromos: true, canal: { $in: canales }, ...filtro }, 'canal contacto nombre').limit(20000).lean();
+  }
+
+  async resumen(empresaId) {
+    const [total, conPermiso] = await Promise.all([ContactoModel.countDocuments({ empresaId }), ContactoModel.countDocuments({ empresaId, aceptaPromos: true })]);
+    return { total, conPermiso };
+  }
+}
+
+export class CampanaRepository extends MongoRepository {
+  constructor() {
+    super(CampanaModel);
+  }
+
+  async conDestinatarios(id) {
+    return aObjeto(await CampanaModel.findById(id).select('+destinatarios').lean());
+  }
+
+  /** Programadas cuya hora ya llegó, y las que están a medio enviar. */
+  async porAtender(ahora) {
+    return (await CampanaModel.find({ $or: [{ estado: 'programada', programadaPara: { $lte: ahora } }, { estado: 'enviando' }] }).limit(20).lean()).map(aObjeto);
+  }
+
+  /** Solo una instancia envía un lote a la vez: se aparta la campaña por 3 minutos. */
+  async apartar(id, ahora) {
+    const doc = await CampanaModel.findOneAndUpdate(
+      { _id: id, $or: [{ bloqueadaHasta: null }, { bloqueadaHasta: { $exists: false } }, { bloqueadaHasta: { $lt: ahora } }] },
+      { $set: { bloqueadaHasta: new Date(ahora.getTime() + 3 * 60_000) } },
+      { new: true },
+    ).lean();
+    return Boolean(doc);
+  }
+
+  async guardarAvance(id, cambios) {
+    await CampanaModel.updateOne({ _id: id }, { $set: { ...cambios, bloqueadaHasta: null } });
+  }
+}
+
+export class EncuestaRepository extends MongoRepository {
+  constructor() {
+    super(EncuestaModel);
+  }
+
+  async resumen(empresaId, desde) {
+    const [r] = await EncuestaModel.aggregate([
+      { $match: { empresaId: oid(empresaId), createdAt: { $gte: desde } } },
+      { $group: { _id: null, promedio: { $avg: '$calificacion' }, total: { $sum: 1 }, buenas: { $sum: { $cond: [{ $gte: ['$calificacion', 4] }, 1, 0] } } } },
+    ]);
+    const porNota = await EncuestaModel.aggregate([
+      { $match: { empresaId: oid(empresaId), createdAt: { $gte: desde } } },
+      { $group: { _id: '$calificacion', n: { $sum: 1 } } },
+    ]);
+    const distribucion = [1, 2, 3, 4, 5].map((c) => porNota.find((p) => p._id === c)?.n ?? 0);
+    return { promedio: r ? Math.round(r.promedio * 10) / 10 : null, total: r?.total ?? 0, buenas: r?.buenas ?? 0, distribucion };
+  }
+}
+
+export class VersionRepository extends MongoRepository {
+  constructor() {
+    super(VersionModel);
+  }
+
+  async deBot(empresaId, botId) {
+    return this.listar(empresaId, { botId }, { orden: { createdAt: -1 }, limite: 30, campos: '-nodos -conexiones' });
+  }
+
+  /** Se guardan las últimas 30 publicaciones de cada bot. */
+  async podar(botId, conservar = 30) {
+    const viejas = await VersionModel.find({ botId }, '_id').sort({ createdAt: -1 }).skip(conservar).lean();
+    if (viejas.length) await VersionModel.deleteMany({ _id: { $in: viejas.map((v) => v._id) } });
+  }
+
+  async borrarDeBot(empresaId, botId) {
+    await VersionModel.deleteMany({ empresaId, botId });
+  }
+}
+
+export class ActividadRepository extends MongoRepository {
+  constructor() {
+    super(ActividadModel);
+  }
+
+  async registrar(datos) {
+    await ActividadModel.create(datos);
+  }
+
+  async buscar(empresaId, { entidad, usuario, limite = 200 } = {}) {
+    const filtro = { ...(entidad ? { entidad } : {}), ...(usuario ? { usuario } : {}) };
+    return this.listar(empresaId, filtro, { orden: { fecha: -1 }, limite });
+  }
+}
+
+export class UsoRepository {
+  async sumar(empresaId, mes, campo, n = 1) {
+    await UsoModel.updateOne({ empresaId, mes }, { $inc: { [campo]: n } }, { upsert: true });
+  }
+
+  async obtener(empresaId, mes) {
+    const doc = await UsoModel.findOne({ empresaId, mes }).lean();
+    return { conversaciones: doc?.conversaciones ?? 0, ia: doc?.ia ?? 0, campanas: doc?.campanas ?? 0 };
+  }
+
+  async delMes(mes) {
+    const docs = await UsoModel.find({ mes }).lean();
+    return new Map(docs.map((d) => [String(d.empresaId), { conversaciones: d.conversaciones, ia: d.ia, campanas: d.campanas }]));
   }
 }

@@ -14,7 +14,8 @@ export function crearApp({ rutas, rutasPublicas = [], corsOrigen }) {
   app.set('trust proxy', 1);
   app.use(helmet());
   // 1 MB: un flujo grande (muchos bloques) y los webhooks de Evolution caben de sobra
-  app.use(express.json({ limit: '1mb' }));
+  // rawBody: Stripe y Meta firman el cuerpo EXACTO que mandaron
+  app.use(express.json({ limit: '1mb', verify: (req, _res, buf) => (req.rawBody = buf) }));
   // Antes del CORS restringido del panel: estas rutas las llama el globito desde el sitio de cada negocio
   for (const [prefijo, router] of rutasPublicas) app.use(prefijo, cors({ origin: '*' }), router);
   app.use(cors({ origin: corsOrigen }));

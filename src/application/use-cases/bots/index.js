@@ -10,12 +10,14 @@ const sinPublicar = (bot) => (bot.borrador?.version ?? 0) > (bot.publicado?.vers
 
 /** Lo que ve el frontend de un bot (nunca el token del motor). */
 function vista(bot, { conFlujo = false } = {}) {
-  const { tokenMotor: _, borrador, publicado, ...resto } = bot;
+  const { tokenMotor: _, borrador, publicado, telegram, meta, ...resto } = bot;
   return {
     ...resto,
     publicado: publicado ? { version: publicado.version, fecha: publicado.fecha } : null,
     borrador: conFlujo ? borrador : { version: borrador?.version ?? 0, fecha: borrador?.fecha },
     cambiosSinPublicar: sinPublicar(bot),
+    telegram: { activo: Boolean(telegram?.activo), usuario: telegram?.usuario ?? '' },
+    meta: { activo: Boolean(meta?.activo), paginaId: meta?.paginaId ?? '', instagram: Boolean(meta?.instagramId) },
   };
 }
 
@@ -31,13 +33,14 @@ export class ListarBots extends UseCase {
 }
 
 export class CrearBot extends UseCase {
-  constructor({ bots, empresas, generador }) {
+  constructor({ bots, empresas, generador, limites, bitacora }) {
     super();
-    Object.assign(this, { bots, empresas, generador });
+    Object.assign(this, { bots, empresas, generador, limites, bitacora });
   }
 
   /** Sin plantilla elegida, se usa la recomendada para el giro de la empresa. */
   async ejecutar({ actor, nombre, descripcion = '', plantilla, flujo }) {
+    await this.limites?.exigirBotNuevo(actor.empresaId);
     plantilla ??= plantillaDeGiro((await this.empresas.obtener(actor.empresaId))?.giro);
     const inicial = flujo ?? PLANTILLAS[plantilla]();
     const base = nombre
@@ -54,6 +57,7 @@ export class CrearBot extends UseCase {
       tokenMotor: this.generador.token(),
       borrador: { nodos: inicial.nodos, conexiones: inicial.conexiones, version: 1, fecha: new Date() },
     });
+    await this.bitacora?.registrar(actor, 'bot.crear', { entidad: 'bot', entidadId: bot.id, detalle: nombre });
     return vista(bot, { conFlujo: true });
   }
 }
@@ -82,9 +86,9 @@ export class EditarBot extends UseCase {
 }
 
 export class BorrarBot extends UseCase {
-  constructor({ bots, conversaciones, publicador, evolution, estadisticas }) {
+  constructor({ bots, conversaciones, publicador, evolution, estadisticas, versiones, bitacora }) {
     super();
-    Object.assign(this, { bots, conversaciones, publicador, evolution, estadisticas });
+    Object.assign(this, { bots, conversaciones, publicador, evolution, estadisticas, versiones, bitacora });
   }
 
   async ejecutar({ actor, botId }) {
@@ -94,9 +98,11 @@ export class BorrarBot extends UseCase {
     if (this.evolution.configurado) await this.evolution.borrar(bot.instancia);
     await this.conversaciones.borrarDeCanal(actor.empresaId, bot.id, 'whatsapp');
     await this.conversaciones.borrarDeCanal(actor.empresaId, bot.id, 'simulador');
-    await this.conversaciones.borrarDeCanal(actor.empresaId, bot.id, 'web');
+    for (const canal of ['web', 'telegram', 'messenger', 'instagram']) await this.conversaciones.borrarDeCanal(actor.empresaId, bot.id, canal);
     await this.estadisticas.borrarDeBot(actor.empresaId, bot.id);
+    await this.versiones?.borrarDeBot(actor.empresaId, bot.id);
     await this.bots.borrar(actor.empresaId, bot.id);
+    await this.bitacora?.registrar(actor, 'bot.borrar', { entidad: 'bot', entidadId: bot.id, detalle: bot.nombre });
   }
 }
 
@@ -120,9 +126,9 @@ export class GuardarFlujo extends UseCase {
  * Si Evolution está configurada, apunta el webhook de la instancia de WhatsApp a ese workflow.
  */
 export class PublicarBot extends UseCase {
-  constructor({ bots, publicador, evolution }) {
+  constructor({ bots, publicador, evolution, versiones, bitacora }) {
     super();
-    Object.assign(this, { bots, publicador, evolution });
+    Object.assign(this, { bots, publicador, evolution, versiones, bitacora });
   }
 
   async ejecutar({ actor, botId }) {
@@ -142,6 +148,12 @@ export class PublicarBot extends UseCase {
       n8nWorkflowId: r.workflowId,
       webhookUrl: r.webhookUrl,
     });
+    // Cada publicación queda guardada para poder regresar a ella desde "Versiones"
+    if (this.versiones) {
+      await this.versiones.crear(actor.empresaId, { botId: bot.id, version: bot.borrador.version, nodos: bot.borrador.nodos, conexiones: bot.borrador.conexiones, publicadaPor: actor.email ?? '' });
+      await this.versiones.podar(bot.id);
+    }
+    await this.bitacora?.registrar(actor, 'bot.publicar', { entidad: 'bot', entidadId: bot.id, detalle: `${bot.nombre} v${bot.borrador.version}` });
     return { bot: vista(actualizado), modo: r.modo, webhookUrl: r.webhookUrl, avisos, problemas };
   }
 }

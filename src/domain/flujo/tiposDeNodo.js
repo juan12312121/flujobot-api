@@ -18,6 +18,10 @@ export const TIPOS_DE_NODO = Object.freeze({
   ia: { nombre: 'Responder con IA', salidas: ['respondio', 'no_sabe'], espera: true },
   condicion: { nombre: 'Condición', salidas: ['si', 'no'], espera: false },
   webhook: { nombre: 'Tarea en n8n', salidas: ['ok', 'error'], espera: false },
+  estado: { nombre: 'Consultar pedido o cita', salidas: ['encontrado', 'nada'], espera: false },
+  esperar: { nombre: 'Esperar respuesta', salidas: ['respondio', 'sin_respuesta'], espera: true },
+  encuesta: { nombre: 'Encuesta de satisfacción', salidas: ['buena', 'mala'], espera: true },
+  permiso: { nombre: 'Pedir permiso para promociones', salidas: ['acepto', 'no_acepto'], espera: true },
   humano: { nombre: 'Pasar a un asesor', salidas: [], espera: false },
   fin: { nombre: 'Fin', salidas: [], espera: false },
 });

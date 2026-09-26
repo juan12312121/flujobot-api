@@ -2,7 +2,8 @@ import { TIPOS_DE_NODO } from '../../domain/flujo/tiposDeNodo.js';
 import { interpolar, elegirOpcion, disparaInicio, validarRespuesta, normalizar, dinero } from '../../domain/flujo/texto.js';
 import { cumpleCondicion, describirCondicion } from '../../domain/flujo/condiciones.js';
 import { agregarAlCarrito, totalCarrito, resumenCarrito } from '../../domain/pedidos/carrito.js';
-import { diasDisponibles, espaciosDelDia, rangoBusqueda, nombreDia } from '../../domain/agenda/disponibilidad.js';
+import { diasDisponibles, espaciosDelDia, rangoBusqueda, nombreDia, aLocal } from '../../domain/agenda/disponibilidad.js';
+import { ESTADO_PEDIDO_TEXTO, ESTADO_CITA_TEXTO, PAGO_TEXTO, PALABRAS_SI, PALABRAS_NO } from '../../domain/avisos/textos.js';
 
 /** Freno contra flujos en círculo (mensaje → condición → mensaje...) que no esperan respuesta. */
 const MAX_PASOS = 40;
@@ -27,11 +28,16 @@ export class MotorDeFlujo {
    *   citas: { ocupadas(empresaId: string, desde: Date, hasta: Date): Promise<{ inicio: Date, fin: Date }[]>, crear(datos: object): Promise<{ folio: string }> },
    *   clienteWebhook: { enviar(url: string, cuerpo: object): Promise<any> },
    *   respondedor?: { responder(entrada: object): Promise<string | null> },
+   *   cobros?: { link(entrada: { empresaId: string, pedido: object, canal: string }): Promise<string | null> },
    *   reloj?: () => Date,
    * }} deps
+   *
+   * Además de las respuestas, el motor devuelve `efectos`: cosas que pasan fuera de la plática y que
+   * aplica quien lo llama (programar una espera, guardar una encuesta, el permiso de promociones...).
    */
-  constructor({ productos, pedidos, citas, clienteWebhook, respondedor, reloj = () => new Date() }) {
+  constructor({ productos, pedidos, citas, clienteWebhook, respondedor, cobros, reloj = () => new Date() }) {
     this.respondedor = respondedor;
+    this.cobros = cobros;
     this.productos = productos;
     this.citas = citas;
     this.pedidos = pedidos;
@@ -45,7 +51,7 @@ export class MotorDeFlujo {
    *                      empresa?: { horario: object, zonaHoraria: string, terminos: object, conocimiento?: string } } }} entrada
    */
   async procesar({ flujo, sesion, texto, contexto }) {
-    const ejecucion = { flujo, contexto, texto, respuestas: [], recorrido: [], sesion: structuredClone(sesion) };
+    const ejecucion = { flujo, contexto, texto, respuestas: [], recorrido: [], efectos: [], sesion: structuredClone(sesion) };
     const s = ejecucion.sesion;
     const inicio = flujo.inicio();
     if (!inicio) return this.#resultado(ejecucion);
@@ -55,7 +61,10 @@ export class MotorDeFlujo {
       return this.#resultado(ejecucion);
     }
 
-    const expira = (inicio.datos?.expiraMinutos ?? EXPIRA_MINUTOS) * 60_000;
+    // En un bloque "Esperar" la conversación sigue viva todo el tiempo de espera (más el margen normal)
+    const enEspera = s.nodoActual ? flujo.nodo(s.nodoActual) : null;
+    const extra = enEspera?.tipo === 'esperar' ? (Number(enEspera.datos?.minutos) || 0) * 60_000 : 0;
+    const expira = (inicio.datos?.expiraMinutos ?? EXPIRA_MINUTOS) * 60_000 + extra;
     const vencida = s.actualizadoEn && this.reloj() - new Date(s.actualizadoEn) > expira;
     const pideReinicio = (inicio.datos?.palabrasReinicio ?? []).some((p) => normalizar(p) === normalizar(texto));
 
@@ -76,6 +85,29 @@ export class MotorDeFlujo {
       nodo = inicio;
     }
     await this.#avanzar(ejecucion, nodo);
+    return this.#resultado(ejecucion);
+  }
+
+  /**
+   * Se cumplió el tiempo de un bloque "Esperar" sin que el cliente contestara: sigue por "No respondió".
+   * `token` evita reanudar una espera vieja (el cliente ya contestó o la conversación volvió a empezar).
+   */
+  async reanudar({ flujo, sesion, contexto, token }) {
+    const ejecucion = { flujo, contexto, texto: '', respuestas: [], recorrido: [], efectos: [], sesion: structuredClone(sesion) };
+    const s = ejecucion.sesion;
+    const nodo = s.estado === 'activa' && s.nodoActual ? flujo.nodo(s.nodoActual) : null;
+    if (nodo?.tipo !== 'esperar' || s.variables?._espera?.token !== token) return { ...this.#resultado(ejecucion), vigente: false };
+    delete s.variables._espera;
+    const paso = this.#paso(ejecucion, nodo, 'Se cumplió el tiempo de espera y el cliente no contestó, así que se fue por "No respondió".', { puerto: 'sin_respuesta' });
+    await this.#avanzar(ejecucion, flujo.siguiente(nodo.id, paso.puerto));
+    return { ...this.#resultado(ejecucion), vigente: true };
+  }
+
+  /** Vuelve a mostrar lo que el bot estaba preguntando (p. ej. al recordarle un carrito abandonado). */
+  async recordar({ flujo, sesion, contexto }) {
+    const ejecucion = { flujo, contexto, texto: '', respuestas: [], recorrido: [], efectos: [], sesion: structuredClone(sesion) };
+    const nodo = ejecucion.sesion.nodoActual ? flujo.nodo(ejecucion.sesion.nodoActual) : null;
+    if (nodo && TIPOS_DE_NODO[nodo.tipo]?.espera) await this.#mostrar(ejecucion, nodo, { reintento: true });
     return this.#resultado(ejecucion);
   }
 
@@ -150,25 +182,72 @@ export class MotorDeFlujo {
           canal: contexto.canal ?? 'whatsapp',
           items: s.carrito,
           total: totalCarrito(s.carrito),
-          datos: { ...s.variables },
+          datos: Object.fromEntries(Object.entries(s.variables).filter(([k]) => !k.startsWith('_'))),
+          recuperado: Boolean(s.carritoRecordado),
         });
         s.variables.folio = pedido.folio;
         s.variables.total = dinero(pedido.total, contexto.moneda);
         const conProductos = s.carrito.length > 0;
         s.carrito = [];
-        this.#decir(
-          ejecucion,
-          d.texto ||
-            (conProductos
-              ? '¡Listo! Tu pedido *{{folio}}* quedó registrado por {{total}}. Te contactaremos pronto.'
-              : '¡Gracias! Registramos tu solicitud *{{folio}}*. Te contactaremos pronto.'),
-        );
+        ejecucion.efectos.push({ tipo: 'compra', pedidoId: pedido.id, folio: pedido.folio });
+
+        // Cobro en línea: link de Mercado Pago / Stripe en {{linkPago}}
+        let cobro = '';
+        if (d.cobrar && pedido.total > 0) {
+          const link = this.cobros ? await this.cobros.link({ empresaId: contexto.empresaId, pedido, canal: contexto.canal }).catch(() => null) : null;
+          if (link) {
+            s.variables.linkPago = link;
+            cobro = link.startsWith('https://') ? ' Se generó el link de pago.' : '';
+          } else {
+            paso.error = true;
+            cobro = ' No se pudo generar el link de pago (revisa "Cobros" en Mi empresa).';
+          }
+        }
+        const textoFabrica = conProductos
+          ? d.cobrar && s.variables.linkPago
+            ? '¡Listo! Tu pedido *{{folio}}* quedó registrado por {{total}}.\n\nPágalo aquí: {{linkPago}}'
+            : '¡Listo! Tu pedido *{{folio}}* quedó registrado por {{total}}. Te contactaremos pronto.'
+          : '¡Gracias! Registramos tu solicitud *{{folio}}*. Te contactaremos pronto.';
+        this.#decir(ejecucion, d.texto || textoFabrica);
         return ir(
           'siguiente',
-          conProductos
+          (conProductos
             ? `Se registró el pedido ${pedido.folio} por ${s.variables.total}.`
-            : `Se registró la solicitud ${pedido.folio} con los datos que dio el cliente.`,
+            : `Se registró la solicitud ${pedido.folio} con los datos que dio el cliente.`) + cobro,
         );
+      }
+
+      case 'estado': {
+        const zona = contexto.empresa?.zonaHoraria ?? 'America/Mexico_City';
+        const que = d.que ?? 'ambos';
+        const [pedidos, citas] = await Promise.all([
+          que !== 'citas' && this.pedidos.delContacto ? this.pedidos.delContacto(contexto.empresaId, s.contacto, 3) : [],
+          que !== 'pedidos' && this.citas?.proximasDelContacto ? this.citas.proximasDelContacto(contexto.empresaId, s.contacto, this.reloj()) : [],
+        ]);
+        if (pedidos.length === 0 && citas.length === 0) {
+          this.#decir(ejecucion, d.textoNada || 'No encontré pedidos ni citas con este número. Si crees que es un error, escríbenos.');
+          return ir('nada', 'El bot buscó pedidos y citas de este cliente y no encontró ninguno.');
+        }
+        const t = contexto.empresa?.terminos ?? {};
+        const lineas = [];
+        if (pedidos.length) {
+          lineas.push(`*${t.pedidos ?? 'Pedidos'}:*`);
+          for (const p of pedidos) {
+            const pago = PAGO_TEXTO[p.pago?.estado] ? ` (${PAGO_TEXTO[p.pago.estado]})` : '';
+            lineas.push(`• *${p.folio}* — ${ESTADO_PEDIDO_TEXTO[p.estado] ?? p.estado}${p.total > 0 ? ` — ${dinero(p.total, contexto.moneda)}` : ''}${pago}`);
+          }
+        }
+        if (citas.length) {
+          if (lineas.length) lineas.push('');
+          lineas.push(`*${t.citas ?? 'Citas'}:*`);
+          for (const c of citas) {
+            const l = aLocal(new Date(c.inicio), zona);
+            lineas.push(`• *${c.folio}* — ${nombreDia(l.fecha)} a las ${l.hora}${c.servicio ? ` (${c.servicio})` : ''} — ${ESTADO_CITA_TEXTO[c.estado] ?? c.estado}`);
+          }
+        }
+        if (pedidos[0]) s.variables.ultimoPedido = { folio: pedidos[0].folio, estado: ESTADO_PEDIDO_TEXTO[pedidos[0].estado] ?? pedidos[0].estado };
+        this.#decir(ejecucion, `${this.#texto(ejecucion, d.texto || 'Esto es lo que encontré:')}\n\n${lineas.join('\n')}`, false);
+        return ir('encontrado', `El bot le mostró al cliente el estado de ${pedidos.length} pedido(s) y ${citas.length} cita(s).`);
       }
 
       case 'condicion': {
@@ -256,6 +335,34 @@ export class MotorDeFlujo {
       case 'ia':
         this.#decir(ejecucion, d.texto || '¿Qué te gustaría saber? Escríbeme tu pregunta.');
         return esperar('El bot invitó al cliente a escribir su pregunta con sus propias palabras.');
+      case 'esperar': {
+        if (d.texto && !reintento) this.#decir(ejecucion, d.texto);
+        const minutos = Number(d.minutos) || 60;
+        if (!reintento) {
+          const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+          s.variables._espera = { token, hasta: new Date(this.reloj().getTime() + minutos * 60_000).toISOString() };
+          ejecucion.efectos.push({ tipo: 'esperar', nodoId: nodo.id, minutos, token });
+        }
+        const simulador = contexto.canal === 'simulador' ? ' En el simulador puedes escribir /pasar para ver qué pasa si no contesta.' : '';
+        return esperar(`El bot espera ${duracion(minutos)} a que el cliente conteste.${simulador}`);
+      }
+      case 'encuesta': {
+        const e = s.variables._encuesta;
+        if (e?.paso === 'comentario') {
+          this.#decir(ejecucion, d.textoComentario || '¿Quieres dejarnos un comentario? Escríbelo, o responde *no*.');
+          return esperar('El bot pidió un comentario opcional.');
+        }
+        s.variables._encuesta = { paso: 'calificacion' };
+        this.#decir(ejecucion, d.texto || '¿Cómo calificarías la atención? Responde con un número del *1* (malo) al *5* (excelente).');
+        return esperar('El bot pidió al cliente que califique la atención del 1 al 5.');
+      }
+      case 'permiso':
+        this.#decir(
+          ejecucion,
+          `${this.#texto(ejecucion, d.texto || '¿Te gustaría recibir nuestras promociones y novedades por aquí?')}\n\n*1.* Sí, quiero recibirlas\n*2.* No, gracias`,
+          false,
+        );
+        return esperar('El bot pidió permiso para mandarle promociones (sin permiso no entra a las campañas).');
       default:
         return ESPERAR;
     }
@@ -311,6 +418,48 @@ export class MotorDeFlujo {
       }
       case 'cita':
         return this.#responderAgenda(ejecucion, nodo, texto, reintentar, salir, paso);
+      case 'esperar': {
+        delete s.variables._espera;
+        if (contexto.canal === 'simulador' && normalizar(texto) === '/pasar') {
+          return salir('sin_respuesta', 'Simulaste que el cliente no contestó a tiempo, así que se fue por "No respondió".');
+        }
+        s.variables.respuesta = texto;
+        return salir('respondio', `El cliente contestó "${texto}" antes de que se cumpliera el tiempo.`);
+      }
+      case 'encuesta': {
+        const e = s.variables._encuesta ?? { paso: 'calificacion' };
+        if (e.paso === 'comentario') {
+          const comentario = PALABRAS_NO.includes(normalizar(texto)) ? '' : texto.trim().slice(0, 500);
+          delete s.variables._encuesta;
+          ejecucion.efectos.push({ tipo: 'encuesta', calificacion: e.calificacion, comentario });
+          return this.#cerrarEncuesta(ejecucion, d, e.calificacion, salir, comentario);
+        }
+        const n = Number.parseInt(normalizar(texto), 10);
+        if (!(n >= 1 && n <= 5) || String(n) !== normalizar(texto)) {
+          return reintentar('Responde con un número del 1 al 5, por favor.', `"${texto}" no es una calificación del 1 al 5.`);
+        }
+        s.variables.calificacion = n;
+        if (d.pedirComentario) {
+          s.variables._encuesta = { paso: 'comentario', calificacion: n };
+          Object.assign(paso, { texto: `El cliente calificó con ${n}; el bot le pide un comentario.`, espera: true });
+          await this.#mostrar(ejecucion, nodo, { reintento: true });
+          return ESPERAR;
+        }
+        delete s.variables._encuesta;
+        ejecucion.efectos.push({ tipo: 'encuesta', calificacion: n, comentario: '' });
+        return this.#cerrarEncuesta(ejecucion, d, n, salir);
+      }
+      case 'permiso': {
+        const t = normalizar(texto);
+        const si = PALABRAS_SI.includes(t) || /^si\b/.test(t);
+        const no = PALABRAS_NO.includes(t) || /^no\b/.test(t);
+        if (!si && !no) return reintentar('Responde *1* para sí o *2* para no.', `"${texto}" no es sí ni no.`);
+        ejecucion.efectos.push({ tipo: 'permiso', acepta: si });
+        s.variables.aceptaPromos = si ? 'sí' : 'no';
+        if (si) this.#decir(ejecucion, d.textoSi || '¡Listo! Te avisaremos de promociones. Puedes escribir *BAJA* cuando quieras dejar de recibirlas.');
+        else if (d.textoNo) this.#decir(ejecucion, d.textoNo);
+        return salir(si ? 'acepto' : 'no_acepto', si ? 'El cliente aceptó recibir promociones.' : 'El cliente no quiso recibir promociones.');
+      }
       case 'ia': {
         s.variables.pregunta = texto;
         const respuesta = await this.#preguntarIA(ejecucion, texto);
@@ -456,9 +605,17 @@ export class MotorDeFlujo {
     });
     delete s.variables._cita;
     s.variables.cita = { fecha: nombreDia(cita.fecha), hora, folio: creada.folio };
+    ejecucion.efectos.push({ tipo: 'cita', citaId: creada.id });
     const termino = (contexto.empresa?.terminos?.cita ?? 'cita').toLowerCase();
     this.#decir(ejecucion, d.textoConfirmacion || `¡Listo! Tu ${termino} quedó para el *{{cita.fecha}}* a las *{{cita.hora}}*. Folio: {{cita.folio}}`);
     return salir('agendada', `Se apartó la ${termino} del ${nombreDia(cita.fecha)} a las ${hora} (folio ${creada.folio}).`);
+  }
+
+  #cerrarEncuesta(ejecucion, d, calificacion, salir, comentario = '') {
+    const buena = calificacion >= 4;
+    this.#decir(ejecucion, (buena ? d.textoBuena : d.textoMala) || '¡Gracias por tu calificación!');
+    const extra = comentario ? ` y comentó "${comentario}"` : '';
+    return salir(buena ? 'buena' : 'mala', `El cliente calificó con ${calificacion} de 5${extra}.`);
   }
 
   /** Pregunta libre → respuesta con la información del negocio, o null si no la sabe (o no hay IA). */
@@ -479,6 +636,7 @@ export class MotorDeFlujo {
     s.nodoActual = null;
     s.variables = { nombre: s.nombre ?? '', telefono: s.contacto, empresa: contexto.nombreEmpresa ?? '' };
     s.carrito = [];
+    s.carritoRecordado = null;
   }
 
   #terminar(s) {
@@ -512,13 +670,21 @@ export class MotorDeFlujo {
     if (final.trim()) this.#emitir(ejecucion, { tipo: 'texto', texto: final });
   }
 
-  #resultado({ respuestas, recorrido, sesion }) {
+  #resultado({ respuestas, recorrido, efectos, sesion }) {
     sesion.actualizadoEn = this.reloj();
-    return { respuestas, recorrido, sesion };
+    return { respuestas, recorrido, efectos, sesion };
   }
 }
 
 const NOMBRE_DATO = { numero: 'número', email: 'correo', telefono: 'teléfono', texto: 'texto' };
+
+/** 90 → "1 h 30 min"; 2880 → "2 días". */
+function duracion(minutos) {
+  if (minutos % 1440 === 0) return `${minutos / 1440} día${minutos === 1440 ? '' : 's'}`;
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  return [h ? `${h} h` : '', m ? `${m} min` : ''].filter(Boolean).join(' ');
+}
 
 /** "Corte de cabello (45 min) — desde $150.00" */
 function lineaCatalogo(p, moneda) {

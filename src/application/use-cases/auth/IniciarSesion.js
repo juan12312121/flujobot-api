@@ -2,9 +2,9 @@ import { UseCase } from '../../shared/UseCase.js';
 import { NoAutenticadoError } from '../../shared/errors.js';
 
 export class IniciarSesion extends UseCase {
-  constructor({ empresas, usuarios, hasher, tokens }) {
+  constructor({ empresas, usuarios, hasher, tokens, superadmins = [] }) {
     super();
-    Object.assign(this, { empresas, usuarios, hasher, tokens });
+    Object.assign(this, { empresas, usuarios, hasher, tokens, superadmins });
   }
 
   async ejecutar({ email, password }) {
@@ -15,7 +15,7 @@ export class IniciarSesion extends UseCase {
     }
     const { passwordHash: _, ...usuario } = encontrado;
     const empresa = await this.empresas.obtener(usuario.empresaId);
-    if (!empresa?.activa) throw new NoAutenticadoError('La empresa está desactivada');
-    return { token: this.tokens.firmar(usuario), usuario, empresa };
+    if (!empresa?.activa) throw new NoAutenticadoError(`La empresa está suspendida${empresa?.suspendidaMotivo ? `: ${empresa.suspendidaMotivo}` : ''}`);
+    return { token: this.tokens.firmar(usuario), usuario: { ...usuario, esSuperadmin: this.superadmins.includes(usuario.email) }, empresa };
   }
 }

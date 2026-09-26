@@ -1,6 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import { ApiResponse } from './ApiResponse.js';
 import { NoAutenticadoError } from '../../application/shared/errors.js';
+import { PermisoDenegadoError } from '../../domain/shared/errors.js';
 
 /**
  * Exige "Authorization: Bearer <token>" y deja { id, empresaId, rol, email } en req.actor.
@@ -15,6 +16,12 @@ export const autenticar = (tokens) => (req, _res, next) => {
   } catch (e) {
     next(e);
   }
+};
+
+/** Solo las cuentas de SUPERADMINS (correos en el .env) entran al panel de toda la plataforma. */
+export const soloSuperadmin = (correos) => (req, _res, next) => {
+  if (!correos.includes(req.actor?.email)) return next(new PermisoDenegadoError('Solo el administrador de FlujoBot puede ver esto'));
+  next();
 };
 
 const limitar = (limit, windowMs, codigo, mensaje) =>
@@ -34,3 +41,6 @@ export const limiteChatPublico = limitar(90, 60_000, 'DEMASIADOS_MENSAJES', 'Dem
 
 /** Motor: todos los mensajes de WhatsApp de todos los bots llegan desde la IP de n8n. */
 export const limiteMotor = limitar(3000, 60_000, 'DEMASIADOS_MENSAJES', 'Demasiados mensajes por minuto');
+
+/** Webhooks de Telegram, Meta y pasarelas. */
+export const limiteEntradas = limitar(3000, 60_000, 'DEMASIADOS_MENSAJES', 'Demasiadas peticiones por minuto');

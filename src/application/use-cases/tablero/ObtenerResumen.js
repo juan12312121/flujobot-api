@@ -4,9 +4,9 @@ import { aLocal, localAUtc } from '../../../domain/agenda/disponibilidad.js';
 
 /** Números de la pantalla de inicio de la empresa. */
 export class ObtenerResumen extends UseCase {
-  constructor({ bots, productos, pedidos, conversaciones, citas, empresas, reloj = () => new Date() }) {
+  constructor({ bots, productos, pedidos, conversaciones, citas, empresas, encuestas, limites, reloj = () => new Date() }) {
     super();
-    Object.assign(this, { bots, productos, pedidos, conversaciones, citas, empresas, reloj });
+    Object.assign(this, { bots, productos, pedidos, conversaciones, citas, empresas, encuestas, limites, reloj });
   }
 
   async ejecutar({ actor }) {
@@ -29,6 +29,25 @@ export class ObtenerResumen extends UseCase {
       this.citas.contar(e, { canal: { $ne: 'simulador' }, inicio: { $gte: inicioHoy, $lt: new Date(inicioHoy.getTime() + 86400000) }, estado: { $ne: 'cancelada' } }),
       this.citas.listar(e, { canal: { $ne: 'simulador' }, inicio: { $gte: ahora }, estado: { $in: ['pendiente', 'confirmada'] } }, { orden: { inicio: 1 }, limite: 5 }),
     ]);
-    return { bots, productos, pedidosPendientes: pendientes, conversacionesHoy, esperandoAsesor, ventasMes: mes, ultimosPedidos: ultimos, citasHoy, proximasCitas: proximas };
+    const hace30 = new Date(ahora - 30 * 86400000);
+    const [satisfaccion, recuperados, plan] = await Promise.all([
+      this.encuestas ? this.encuestas.resumen(e, hace30) : null,
+      this.pedidos.contar(e, { recuperado: true, createdAt: { $gte: inicioMes } }),
+      this.limites ? this.limites.estado(empresa) : null,
+    ]);
+    return {
+      bots,
+      productos,
+      pedidosPendientes: pendientes,
+      conversacionesHoy,
+      esperandoAsesor,
+      ventasMes: mes,
+      ultimosPedidos: ultimos,
+      citasHoy,
+      proximasCitas: proximas,
+      satisfaccion,
+      carritosRecuperados: recuperados,
+      plan: plan && { nombre: plan.nombre, vigente: plan.vigente, diasRestantes: plan.diasRestantes, clave: plan.clave, uso: plan.uso, limites: plan.limites },
+    };
   }
 }

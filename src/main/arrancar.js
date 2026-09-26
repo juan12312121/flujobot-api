@@ -14,10 +14,16 @@ export async function arrancar(config) {
     process.exit(1);
   });
   await new Promise((listo) => servidor.listen(config.PORT, listo));
-  const { n8n, evolution, ia } = contenedor.integraciones;
-  console.log(`FlujoBot API en http://localhost:${config.PORT} · n8n: ${n8n ? 'sí' : 'manual'} · Evolution: ${evolution ? 'sí' : 'no'} · IA: ${ia ? 'sí' : 'no'}`);
+  const { n8n, evolution, ia, voz, meta } = contenedor.integraciones;
+  const si = (v) => (v ? 'sí' : 'no');
+  console.log(
+    `FlujoBot API en http://localhost:${config.PORT} · n8n: ${n8n ? 'sí' : 'manual'} · Evolution: ${si(evolution)} · IA: ${si(ia)} · Voz: ${si(voz)} · Meta: ${si(meta)}`,
+  );
+  // Recordatorios, esperas, campañas y carritos abandonados
+  if (config.PROGRAMADOR === 'si') contenedor.programador.iniciar(config.PROGRAMADOR_SEGUNDOS * 1000);
 
   async function apagar() {
+    contenedor.programador.detener();
     servidor.close();
     await contenedor.cerrar().catch(() => {});
     process.exit(0);

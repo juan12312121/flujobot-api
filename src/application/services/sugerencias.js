@@ -46,6 +46,19 @@ export function sugerenciasPara(flujo, sesion) {
       if (cita?.paso === 'hora') return (cita.horas ?? []).slice(0, 6).map((h, i) => ({ texto: String(i + 1), etiqueta: h }));
       return (cita?.dias ?? []).slice(0, 5).map((f, i) => ({ texto: String(i + 1), etiqueta: nombreDia(f) }));
     }
+    case 'esperar':
+      return [
+        { texto: 'Sí, me interesa', etiqueta: 'Contestar a tiempo' },
+        { texto: '/pasar', etiqueta: 'Simular que no contestó' },
+      ];
+    case 'encuesta':
+      if (v._encuesta?.paso === 'comentario') return [{ texto: 'Muy buena atención', etiqueta: 'Dejar comentario' }, { texto: 'no', etiqueta: 'Sin comentario' }];
+      return [5, 4, 2].map((n) => ({ texto: String(n), etiqueta: `Calificar con ${n}` }));
+    case 'permiso':
+      return [
+        { texto: '1', etiqueta: '1. Sí, quiero' },
+        { texto: '2', etiqueta: '2. No, gracias' },
+      ];
     case 'ia':
       return [
         { texto: '¿Qué formas de pago aceptan?', etiqueta: '¿Qué formas de pago aceptan?' },

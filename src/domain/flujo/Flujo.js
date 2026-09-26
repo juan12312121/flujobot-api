@@ -104,6 +104,14 @@ export class Flujo {
       case 'webhook':
         if (vacio(d.url) || !/^https?:\/\//.test(d.url)) error(n.id, 'La tarea necesita la URL del webhook de n8n');
         break;
+      case 'esperar': {
+        const minutos = Number(d.minutos);
+        if (!Number.isFinite(minutos) || minutos < 1 || minutos > 7 * 24 * 60) error(n.id, 'El tiempo de espera debe ser de 1 minuto a 7 días');
+        break;
+      }
+      case 'encuesta':
+        if (d.texto != null && typeof d.texto !== 'string') error(n.id, 'La pregunta de la encuesta debe ser texto');
+        break;
       default:
         break;
     }
@@ -125,7 +133,7 @@ export class Flujo {
   }
 }
 
-const ETIQUETAS = { siguiente: 'Siguiente', agregado: 'Agregó producto', listo: 'Terminó', vacio: 'Carrito vacío', si: 'Sí', no: 'No', ok: 'Éxito', error: 'Falló', agendada: 'Agendó', sin_espacio: 'Sin horario / canceló', respondio: 'Respondió', no_sabe: 'No supo' };
+const ETIQUETAS = { siguiente: 'Siguiente', agregado: 'Agregó producto', listo: 'Terminó', vacio: 'Carrito vacío', si: 'Sí', no: 'No', ok: 'Éxito', error: 'Falló', agendada: 'Agendó', sin_espacio: 'Sin horario / canceló', respondio: 'Respondió', no_sabe: 'No supo', encontrado: 'Encontró', nada: 'No tiene', sin_respuesta: 'No respondió', buena: 'Calificó bien (4-5)', mala: 'Calificó mal (1-3)', acepto: 'Aceptó', no_acepto: 'No aceptó' };
 
 function etiquetaPuerto(nodo, puerto) {
   if (!puerto.startsWith('opcion:')) return ETIQUETAS[puerto] ?? puerto;

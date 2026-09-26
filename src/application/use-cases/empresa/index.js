@@ -22,7 +22,7 @@ export class ObtenerEmpresa extends UseCase {
 }
 
 /** Grupos que se guardan campo por campo: cambiar solo el color no borra el logo. */
-const ANIDADOS = ['marca', 'modulos', 'horario', 'terminos'];
+const ANIDADOS = ['marca', 'modulos', 'horario', 'terminos', 'avisos'];
 
 /**
  * Personalización del espacio de trabajo (solo admin): nombre, giro, colores, logo,
@@ -30,9 +30,9 @@ const ANIDADOS = ['marca', 'modulos', 'horario', 'terminos'];
  * `aplicarGiro: true` reemplaza términos y módulos por los del giro elegido.
  */
 export class ActualizarEmpresa extends UseCase {
-  constructor({ empresas }) {
+  constructor({ empresas, bitacora }) {
     super();
-    this.empresas = empresas;
+    Object.assign(this, { empresas, bitacora });
   }
 
   async ejecutar({ actor, aplicarGiro, ...cambios }) {
@@ -53,6 +53,8 @@ export class ActualizarEmpresa extends UseCase {
         set[campo] = valor;
       }
     }
-    return existe(await this.empresas.actualizar(actor.empresaId, set), 'Empresa no encontrada');
+    const empresa = existe(await this.empresas.actualizar(actor.empresaId, set), 'Empresa no encontrada');
+    await this.bitacora?.registrar(actor, 'empresa.editar', { entidad: 'empresa', entidadId: empresa.id, detalle: Object.keys(cambios).join(', ') });
+    return empresa;
   }
 }

@@ -4,9 +4,9 @@ import { configuracionInicial } from '../../../domain/empresa/giros.js';
 
 /** Alta de una empresa nueva con su primer usuario (admin). Es la puerta de entrada al sistema multiempresa. */
 export class RegistrarEmpresa extends UseCase {
-  constructor({ empresas, usuarios, hasher, tokens, generador }) {
+  constructor({ empresas, usuarios, hasher, tokens, generador, superadmins = [] }) {
     super();
-    Object.assign(this, { empresas, usuarios, hasher, tokens, generador });
+    Object.assign(this, { empresas, usuarios, hasher, tokens, generador, superadmins });
   }
 
   async ejecutar({ empresa: nombreEmpresa, nombre, email, password, moneda, giro }) {
@@ -20,7 +20,7 @@ export class RegistrarEmpresa extends UseCase {
     });
     try {
       const usuario = await this.usuarios.crear(empresa.id, { nombre, email, passwordHash: await this.hasher.hash(password), rol: 'admin' });
-      return { token: this.tokens.firmar({ ...usuario, empresaId: empresa.id }), usuario, empresa };
+      return { token: this.tokens.firmar({ ...usuario, empresaId: empresa.id }), usuario: { ...usuario, esSuperadmin: this.superadmins.includes(usuario.email) }, empresa };
     } catch (e) {
       await this.empresas.borrar(empresa.id); // no dejar empresas huérfanas si falla el usuario
       throw e;

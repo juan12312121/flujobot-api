@@ -81,6 +81,28 @@ export class EnviarMensajeChatPublico extends UseCase {
       respuestas: respuestas.map(({ tipo, texto: t, url }) => ({ tipo, texto: t, url })),
       sugerencias: sugerenciasPara(flujo, conversacion),
       estado: conversacion.estado,
+      // El globito pide lo nuevo "desde" aquí (lo que escriba un asesor o un aviso)
+      fecha: conversacion.historial?.at(-1)?.fecha ?? new Date(),
+    };
+  }
+}
+
+/** Público: lo que un asesor (o un aviso) le escribió al visitante después de `desde`. El globito pregunta cada pocos segundos. */
+export class MensajesNuevosChatPublico extends UseCase {
+  constructor({ bots, conversaciones }) {
+    super();
+    Object.assign(this, { bots, conversaciones });
+  }
+
+  async ejecutar({ clave, visitante, desde }) {
+    const bot = await this.bots.porClaveWeb(clave);
+    if (!bot?.web?.activo) throw new NoEncontradoError(NO_DISPONIBLE);
+    const corte = desde ? new Date(desde) : new Date(Date.now() - 60_000);
+    const { mensajes, estado } = await this.conversaciones.mensajesDesde(bot.id, 'web', `web-${visitante}`, corte);
+    return {
+      mensajes: mensajes.map((m) => ({ de: m.de, autor: m.de === 'asesor' ? 'Asesor' : '', texto: m.texto, url: m.url, fecha: m.fecha })),
+      estado,
+      fecha: mensajes.at(-1)?.fecha ?? corte,
     };
   }
 }

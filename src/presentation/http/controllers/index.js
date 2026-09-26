@@ -37,17 +37,27 @@ export class BotController extends BaseController {
   reiniciarSimulador = this.accion('reiniciarSimulador', { status: 204 });
   configurarWeb = this.accion('configurarChatWeb', { body: esquemas.web.configurar });
   resultados = this.accion('obtenerResultados', { query: esquemas.bots.resultados });
+  versiones = this.accion('listarVersiones');
+  restaurarVersion = this.accion('restaurarVersion');
+  conectarTelegram = this.accion('conectarTelegram', { body: esquemas.canales.telegram });
+  desconectarTelegram = this.accion('desconectarTelegram');
+  conectarMeta = this.accion('conectarMeta', { body: esquemas.canales.meta });
+  desconectarMeta = this.accion('desconectarMeta');
+  recuperacion = this.accion('configurarRecuperacion', { body: esquemas.canales.recuperacion });
 }
 
 export class ConversacionController extends BaseController {
   listar = this.accion('listarConversaciones', { query: esquemas.conversaciones.filtro });
   obtener = this.accion('obtenerConversacion');
   devolver = this.accion('devolverAlBot');
+  tomar = this.accion('tomarConversacion');
+  responder = this.accion('responderComoAsesor', { body: esquemas.conversaciones.responder });
 }
 
 export class PedidoController extends BaseController {
   listar = this.accion('listarPedidos', { query: esquemas.pedidos.filtro });
   cambiarEstado = this.accion('cambiarEstadoPedido', { body: esquemas.pedidos.estado });
+  pagado = this.accion('marcarPedidoPagado');
 }
 
 export class TableroController extends BaseController {
@@ -80,6 +90,66 @@ export class AsistenteController extends BaseController {
 export class ChatWebController extends BaseController {
   publico = this.accion('obtenerChatPublico');
   mensaje = this.accion('enviarMensajeChatPublico', { body: esquemas.web.mensaje });
+  nuevos = this.accion('mensajesNuevosChatPublico', { query: esquemas.web_nuevos });
+}
+
+export class CampanaController extends BaseController {
+  listar = this.accion('listarCampanas');
+  crear = this.accion('crearCampana', { body: esquemas.campanas.crear, status: 201 });
+  editar = this.accion('editarCampana', { body: esquemas.campanas.editar });
+  borrar = this.accion('borrarCampana', { status: 204 });
+  programar = this.accion('programarCampana', { body: esquemas.campanas.programar });
+  cancelar = this.accion('cancelarCampana');
+  contar = this.accion('contarSegmento', { query: esquemas.campanas.segmento });
+  contactos = this.accion('listarContactos', { query: esquemas.campanas.contactos });
+}
+
+export class GestionController extends BaseController {
+  encuestas = this.accion('listarEncuestas', { query: esquemas.gestion.encuestas });
+  actividad = this.accion('listarActividad', { query: esquemas.gestion.actividad });
+  plan = this.accion('obtenerPlan');
+  pagarPlan = this.accion('pagarPlan', { body: esquemas.plataforma.pagarPlan });
+  cobros = this.accion('obtenerCobros');
+  configurarCobros = this.accion('configurarCobros', { body: esquemas.plataforma.cobros });
+}
+
+export class AdminController extends BaseController {
+  empresas = this.accion('listarEmpresasAdmin', { query: esquemas.plataforma.adminFiltro });
+  editarEmpresa = this.accion('actualizarEmpresaAdmin', { body: esquemas.plataforma.adminEditar });
+}
+
+/**
+ * Webhooks de afuera (Telegram, Meta, pasarelas de pago, cron). Contestan rápido: Telegram y Meta
+ * reintentan si tardan, así que el mensaje se atiende después de responder 200.
+ */
+export class EntradaController extends BaseController {
+  telegram = (req, res) => {
+    res.status(200).json({ ok: true });
+    this.casos.recibirTelegram
+      .ejecutar({ botId: req.params.botId, secreto: req.get('x-telegram-bot-api-secret-token'), cuerpo: req.body })
+      .catch((e) => console.warn('Telegram:', e.message));
+  };
+
+  metaVerificar = (req, res) => {
+    const ok = req.query['hub.mode'] === 'subscribe' && this.casos.verificarTokenMeta(req.query['hub.verify_token']);
+    if (!ok) return res.status(403).send('Token de verificación inválido');
+    return res.status(200).send(String(req.query['hub.challenge'] ?? ''));
+  };
+
+  meta = (req, res) => {
+    res.status(200).json({ ok: true });
+    this.casos.recibirMeta
+      .ejecutar({ firma: req.get('x-hub-signature-256'), crudo: req.rawBody?.toString('utf8') ?? '', cuerpo: req.body })
+      .catch((e) => console.warn('Meta:', e.message));
+  };
+
+  pago = this.accion('recibirAvisoPago', {
+    extra: (req) => ({ query: req.query, cuerpo: req.body, crudo: req.rawBody?.toString('utf8') ?? '', firma: req.get('stripe-signature') }),
+  });
+
+  pagoPlataforma = this.accion('recibirPagoPlataforma', { extra: (req) => ({ query: req.query, cuerpo: req.body }) });
+
+  tick = this.accion('correrProgramador', { extra: (req) => ({ secreto: req.get('x-cron-secreto') }) });
 }
 
 export class ArchivoController extends BaseController {

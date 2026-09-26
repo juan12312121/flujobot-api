@@ -3,11 +3,17 @@ import { TIPOS_DE_NODO } from '../../../domain/flujo/tiposDeNodo.js';
 import { PLANTILLAS } from '../../../domain/flujo/plantillas.js';
 import { GIROS } from '../../../domain/empresa/giros.js';
 import { USOS_IMAGEN } from '../../../application/use-cases/archivos/FirmarSubidaImagen.js';
+import { ESTADOS_PEDIDO, CANALES } from '../../../domain/shared/catalogos.js';
+import { SEGMENTOS } from '../../../application/services/Campanas.js';
+import { PLANES } from '../../../domain/planes/planes.js';
+import { TEXTOS_AVISO } from '../../../domain/avisos/textos.js';
 
 const texto = (max = 200) => z.string().trim().min(1, 'Requerido').max(max);
 const email = z.string().trim().toLowerCase().email('Correo inválido');
 const password = z.string().min(8, 'Mínimo 8 caracteres').max(100);
 const booleano = z.union([z.boolean(), z.enum(['true', 'false']).transform((v) => v === 'true')]);
+const idMongo = z.string().regex(/^[0-9a-f]{24}$/i, 'Id inválido');
+const urlOVacia = z.union([z.string().url('URL inválida'), z.literal('')]);
 
 const giro = z.enum(Object.keys(GIROS));
 const color = z.string().regex(/^#[0-9a-f]{6}$/i, 'Color en formato #RRGGBB');
@@ -92,15 +98,21 @@ export const bots = {
 };
 
 export const conversaciones = {
-  filtro: z.object({ botId: z.string().regex(/^[0-9a-f]{24}$/i).optional(), estado: z.enum(['activa', 'terminada', 'humano']).optional() }),
+  filtro: z.object({
+    botId: idMongo.optional(),
+    estado: z.enum(['activa', 'terminada', 'humano']).optional(),
+    canal: z.enum(CANALES.filter((c) => c !== 'simulador')).optional(),
+  }),
+  responder: z.object({ texto: z.string().trim().min(1, 'Escribe un mensaje').max(2000), imagenUrl: urlOVacia.optional() }),
 };
 
 export const pedidos = {
   filtro: z.object({
-    estado: z.enum(['nuevo', 'confirmado', 'enviado', 'entregado', 'cancelado']).optional(),
-    botId: z.string().regex(/^[0-9a-f]{24}$/i).optional(),
+    estado: z.enum(ESTADOS_PEDIDO).optional(),
+    botId: idMongo.optional(),
+    pago: z.enum(['sin_cobro', 'pendiente', 'pagado', 'fallido']).optional(),
   }),
-  estado: z.object({ estado: z.enum(['nuevo', 'confirmado', 'enviado', 'entregado', 'cancelado']) }),
+  estado: z.object({ estado: z.enum(ESTADOS_PEDIDO), avisar: z.boolean().default(true) }),
 };
 
 const TERMINOS = ['item', 'items', 'pedido', 'pedidos', 'cita', 'citas', 'cliente', 'clientes'];
@@ -117,6 +129,16 @@ export const empresa = {
       marca: z.object({ colorPrimario: color, colorMenu: color, logoUrl: z.union([z.string().url('URL inválida'), z.literal('')]) }).partial(),
       terminos: z.object(Object.fromEntries(TERMINOS.map((t) => [t, texto(30)]))).partial(),
       modulos: z.object({ catalogo: z.boolean(), pedidos: z.boolean(), agenda: z.boolean() }).partial(),
+      avisos: z
+        .object({
+          pedidos: z.boolean(),
+          citas: z.boolean(),
+          recordatorioDia: z.boolean(),
+          recordatorioHora: z.boolean(),
+          encuestaAlEntregar: z.boolean(),
+          textos: z.object(Object.fromEntries(Object.keys(TEXTOS_AVISO).map((k) => [k, z.string().max(600)]))).partial(),
+        })
+        .partial(),
       horario: z
         .object({
           dias: z.array(z.number().int().min(0).max(6)).max(7),
@@ -148,9 +170,10 @@ export const citas = {
     contacto: z.string().max(20).default(''),
     servicio: z.string().max(120).default(''),
     notas: z.string().max(500).default(''),
+    botId: idMongo.nullable().default(null),
   }),
   editar: z
-    .object({ estado: z.enum(ESTADOS_CITA), notas: z.string().max(500) })
+    .object({ estado: z.enum(ESTADOS_CITA), notas: z.string().max(500), avisar: z.boolean() })
     .partial()
     .refine((o) => Object.keys(o).length > 0, 'Nada que cambiar'),
 };
@@ -185,6 +208,61 @@ export const web = {
     texto: z.string().trim().min(1).max(1000),
     nombre: z.string().trim().max(60).optional(),
   }),
+};
+
+export const web_nuevos = z.object({
+  visitante: z.string().regex(/^[\w-]{8,64}$/, 'Visitante inválido'),
+  desde: z.string().datetime({ offset: true }).optional(),
+});
+
+const segmento = z.object({ tipo: z.enum(Object.keys(SEGMENTOS)).default('todos'), dias: z.coerce.number().int().min(1).max(365).default(30) });
+const campana = z.object({
+  botId: idMongo,
+  nombre: texto(80),
+  texto: z.string().trim().min(1, 'Escribe el mensaje').max(1500),
+  imagenUrl: urlOVacia.default(''),
+  segmento: segmento.default({}),
+});
+
+export const campanas = {
+  crear: campana,
+  editar: campana.partial().refine((o) => Object.keys(o).length > 0, 'Nada que cambiar'),
+  programar: z.object({ cuando: z.string().datetime({ offset: true }).nullable().optional() }),
+  segmento,
+  contactos: z.object({ permiso: booleano.optional() }),
+};
+
+export const gestion = {
+  encuestas: z.object({ dias: z.coerce.number().int().min(1).max(365).default(30) }),
+  actividad: z.object({ entidad: z.string().max(40).optional(), usuario: z.string().max(120).optional() }),
+};
+
+export const canales = {
+  telegram: z.object({ token: z.string().trim().regex(/^\d+:[\w-]{30,}$/, 'Ese no parece un token de @BotFather (ej. 123456:ABC...)') }),
+  meta: z.object({ token: z.string().trim().min(40, 'Pega el token de acceso de la página') }),
+  recuperacion: z
+    .object({ activo: z.boolean(), horas: z.number().int().min(1).max(48), texto: z.string().trim().max(600) })
+    .partial(),
+};
+
+export const plataforma = {
+  cobros: z.object({
+    proveedor: z.enum(['ninguno', 'mercadopago', 'stripe']),
+    llave: z.string().trim().max(300).optional(),
+    secretoWebhook: z.string().trim().max(300).optional(),
+  }),
+  pagarPlan: z.object({ plan: z.enum(Object.keys(PLANES)) }),
+  adminFiltro: z.object({ texto: z.string().max(80).optional() }),
+  adminEditar: z
+    .object({
+      activa: z.boolean(),
+      motivo: z.string().max(200),
+      plan: z.enum(Object.keys(PLANES)),
+      vence: z.string().datetime({ offset: true }),
+      sumarDias: z.number().int().min(-365).max(365),
+    })
+    .partial()
+    .refine((o) => Object.keys(o).length > 0, 'Nada que cambiar'),
 };
 
 export const archivos = {
