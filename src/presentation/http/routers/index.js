@@ -126,6 +126,18 @@ export class CampanaRouter extends BaseRouter {
   }
 }
 
+/** Módulos personalizados y sus registros. */
+export class ModuloRouter extends BaseRouter {
+  rutas() {
+    this.get('/plantillas', 'plantillas');
+    this.get('/:moduloId/registros', 'registros');
+    this.post('/:moduloId/registros', 'crearRegistro');
+    this.patch('/:moduloId/registros/:registroId', 'editarRegistro');
+    this.delete('/:moduloId/registros/:registroId', 'borrarRegistro');
+    this.crud(':moduloId');
+  }
+}
+
 /** Encuestas, bitácora y cobros de la empresa. */
 export class GestionRouter extends BaseRouter {
   rutas() {

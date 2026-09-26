@@ -25,6 +25,7 @@ import { Cobros } from '../application/services/Cobros.js';
 import { Campanas } from '../application/services/Campanas.js';
 import { Seguimientos } from '../application/services/Seguimientos.js';
 import { Voz } from '../application/services/Voz.js';
+import { RegistrosBot } from '../application/services/RegistrosBot.js';
 import { RegistrarEmpresa } from '../application/use-cases/auth/RegistrarEmpresa.js';
 import { IniciarSesion } from '../application/use-cases/auth/IniciarSesion.js';
 import { ObtenerPerfil } from '../application/use-cases/auth/ObtenerPerfil.js';
@@ -40,6 +41,7 @@ import * as campanasUC from '../application/use-cases/campanas/index.js';
 import * as gestionUC from '../application/use-cases/gestion/index.js';
 import * as canalesUC from '../application/use-cases/canales/index.js';
 import * as plataformaUC from '../application/use-cases/plataforma/index.js';
+import * as modulosUC from '../application/use-cases/modulos/index.js';
 import { ProcesarMensajeEntrante } from '../application/use-cases/motor/ProcesarMensajeEntrante.js';
 import { ObtenerResumen } from '../application/use-cases/tablero/ObtenerResumen.js';
 import { FirmarSubidaImagen } from '../application/use-cases/archivos/FirmarSubidaImagen.js';
@@ -78,6 +80,8 @@ export async function crearContenedor(config) {
     encuestas: new Repos.EncuestaRepository(),
     versiones: new Repos.VersionRepository(),
     actividad: new Repos.ActividadRepository(),
+    modulos: new Repos.ModuloRepository(),
+    registros: new Repos.RegistroRepository(),
   };
   const tokens = new JwtTokenService(config.JWT_SECRET, config.JWT_EXPIRA);
   const mercadopago = new MercadoPagoCliente();
@@ -123,7 +127,7 @@ export async function crearContenedor(config) {
   const avisos = new Avisos({ ...base, mensajero, programador });
   const cobros = new Cobros({ ...base, avisos });
   const respondedor = new RespondedorIA({ ia: servicios.ia, productos: repos.productos });
-  const motor = new MotorDeFlujo({ productos: repos.productos, pedidos: repos.pedidos, citas: repos.citas, clienteWebhook: new FetchClienteWebhook(), respondedor, cobros });
+  const motor = new MotorDeFlujo({ productos: repos.productos, pedidos: repos.pedidos, citas: repos.citas, clienteWebhook: new FetchClienteWebhook(), respondedor, cobros, registros: new RegistrosBot(repos) });
   const atender = new AtenderMensaje({ ...base, motor, programador, avisos });
   const campanasServicio = new Campanas({ ...base, mensajero });
   const seguimientos = new Seguimientos({ ...base, motor, atender, mensajero });
@@ -159,6 +163,7 @@ export async function crearContenedor(config) {
     ...instanciar(gestionUC, deps),
     ...instanciar(canalesUC, deps),
     ...instanciar(plataformaUC, deps),
+    ...instanciar(modulosUC, deps),
     verificarTokenMeta: (token) => Boolean(config.META_VERIFY_TOKEN) && servicios.generador.iguales(token, config.META_VERIFY_TOKEN),
   };
 
@@ -175,6 +180,7 @@ export async function crearContenedor(config) {
     ['/empresa', new R.EmpresaRouter(new C.EmpresaController(casos), conSesion).registrar()],
     ['/citas', new R.CitaRouter(new C.CitaController(casos), conSesion).registrar()],
     ['/campanas', new R.CampanaRouter(new C.CampanaController(casos), conSesion).registrar()],
+    ['/modulos', new R.ModuloRouter(new C.ModuloController(casos), conSesion).registrar()],
     ['/gestion', new R.GestionRouter(new C.GestionController(casos), conSesion).registrar()],
     ['/admin', new R.AdminRouter(new C.AdminController(casos), { middlewares: [limiteGeneral, sesion, soloSuperadmin(config.SUPERADMINS)] }).registrar()],
     ['/asistente', new R.AsistenteRouter(new C.AsistenteController(casos), { middlewares: [limiteIA, sesion] }).registrar()],

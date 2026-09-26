@@ -11,6 +11,8 @@ import {
   EstadisticaModel,
   ContadorModel,
   TrabajoModel,
+  ModuloModel,
+  RegistroModel,
   ContactoModel,
   CampanaModel,
   EncuestaModel,
@@ -506,5 +508,68 @@ export class ActividadRepository extends MongoRepository {
   async buscar(empresaId, { entidad, usuario, limite = 200 } = {}) {
     const filtro = { ...(entidad ? { entidad } : {}), ...(usuario ? { usuario } : {}) };
     return this.listar(empresaId, filtro, { orden: { fecha: -1 }, limite });
+  }
+}
+
+export class ModuloRepository extends MongoRepository {
+  constructor() {
+    super(ModuloModel);
+  }
+
+  async deEmpresa(empresaId) {
+    return this.listar(empresaId, {}, { orden: { orden: 1, createdAt: 1 }, limite: 50 });
+  }
+
+  async porClave(empresaId, clave) {
+    return aObjeto(await ModuloModel.findOne({ empresaId, clave }).lean());
+  }
+
+  async existeClave(empresaId, clave) {
+    return Boolean(await ModuloModel.exists({ empresaId, clave }));
+  }
+}
+
+export class RegistroRepository extends MongoRepository {
+  constructor() {
+    super(RegistroModel);
+  }
+
+  /** Crea con el siguiente folio del módulo: OS-000001, OS-000002... */
+  async crear(datos) {
+    const folio = await siguienteFolio(`modulo-${datos.moduloId}`, datos.prefijo || 'R', datos.empresaId);
+    const { prefijo: _, ...resto } = datos;
+    return super.crear(datos.empresaId, { ...resto, folio });
+  }
+
+  /** Búsqueda por texto (cualquier campo o folio) y filtro exacto por un campo (p. ej. estado). */
+  async buscar(empresaId, moduloId, { texto, campo, valor, limite = 500 } = {}) {
+    const filtro = { moduloId, canal: { $ne: 'simulador' } };
+    if (texto) filtro.textoBusqueda = { $regex: escaparRegex(texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()) };
+    if (campo && valor !== undefined && /^[a-z0-9_]{1,40}$/.test(campo)) filtro[`datos.${campo}`] = valor;
+    return this.listar(empresaId, filtro, { orden: { createdAt: -1 }, limite });
+  }
+
+  /**
+   * Registros de un cliente: los que registró su conversación o los que tienen su teléfono
+   * en algún campo (así se encuentran también los capturados en el panel).
+   */
+  async delContacto(empresaId, moduloId, contacto, camposTelefono = [], limite = 3) {
+    const digitos = String(contacto).replace(/\D/g, '');
+    const ultimos10 = digitos.slice(-10);
+    const o = [{ contacto }];
+    if (ultimos10.length === 10) for (const c of camposTelefono) o.push({ [`datos.${c}`]: { $regex: `${ultimos10}$` } });
+    return this.listar(empresaId, { moduloId, canal: { $ne: 'simulador' }, $or: o }, { orden: { createdAt: -1 }, limite });
+  }
+
+  async contarPorModulo(empresaId) {
+    const filas = await RegistroModel.aggregate([
+      { $match: { empresaId: oid(empresaId), canal: { $ne: 'simulador' } } },
+      { $group: { _id: '$moduloId', n: { $sum: 1 } } },
+    ]);
+    return new Map(filas.map((f) => [String(f._id), f.n]));
+  }
+
+  async borrarDeModulo(empresaId, moduloId) {
+    await RegistroModel.deleteMany({ empresaId, moduloId });
   }
 }

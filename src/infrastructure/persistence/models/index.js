@@ -385,6 +385,45 @@ const ActividadSchema = new Schema(
 );
 ActividadSchema.index({ empresaId: 1, fecha: -1 });
 
+/** Módulo personalizado de una empresa: sus campos los define ella (domain/modulos). */
+const ModuloSchema = new Schema(
+  {
+    empresaId: ref('Empresa'),
+    nombre: { type: String, required: true, trim: true },
+    singular: { type: String, required: true, trim: true },
+    clave: { type: String, required: true },
+    icono: { type: String, default: 'registro' },
+    descripcion: { type: String, default: '' },
+    prefijo: { type: String, default: 'R' },
+    campos: { type: [Schema.Types.Mixed], default: [] },
+    orden: { type: Number, default: 0 },
+    activo: { type: Boolean, default: true },
+    plantilla: { type: String, default: '' },
+  },
+  { timestamps: true, minimize: false },
+);
+ModuloSchema.index({ empresaId: 1, clave: 1 }, { unique: true });
+
+/** Un registro dentro de un módulo (una orden de servicio, un artículo, una membresía...). */
+const RegistroSchema = new Schema(
+  {
+    empresaId: ref('Empresa'),
+    moduloId: ref('Modulo'),
+    folio: { type: String, required: true },
+    datos: { type: Schema.Types.Mixed, default: {} },
+    textoBusqueda: { type: String, default: '', select: false },
+    /** Si lo registró un bot: quién y por dónde (para consultarlo y avisarle). */
+    canal: { type: String, default: 'panel' },
+    contacto: { type: String, default: '' },
+    nombreContacto: { type: String, default: '' },
+    botId: { type: Types.ObjectId, ref: 'Bot', default: null },
+    creadoPor: { type: String, default: '' },
+  },
+  { timestamps: true, minimize: false },
+);
+RegistroSchema.index({ empresaId: 1, moduloId: 1, createdAt: -1 });
+RegistroSchema.index({ empresaId: 1, moduloId: 1, contacto: 1 });
+
 /** Consecutivos por empresa (folios de pedido). _id = "pedido:<empresaId>". */
 const ContadorSchema = new Schema({ _id: String, valor: { type: Number, default: 0 } });
 
@@ -398,6 +437,8 @@ export const CitaModel = model('Cita', CitaSchema);
 export const EstadisticaModel = model('Estadistica', EstadisticaSchema);
 export const ContadorModel = model('Contador', ContadorSchema);
 export const TrabajoModel = model('Trabajo', TrabajoSchema);
+export const ModuloModel = model('Modulo', ModuloSchema);
+export const RegistroModel = model('Registro', RegistroSchema);
 export const ContactoModel = model('Contacto', ContactoSchema);
 export const CampanaModel = model('Campana', CampanaSchema);
 export const EncuestaModel = model('Encuesta', EncuestaSchema);

@@ -12,7 +12,7 @@
     "start": "node src/main/server.js",
     "dev:memoria": "node scripts/servidor-memoria.js",
     "test": "node --test \"tests/**/*.test.js\"",
-    "e2e": "node scripts/e2e.js && node scripts/e2e-crecimiento.js",
+    "e2e": "node scripts/e2e.js && node scripts/e2e-crecimiento.js && node scripts/e2e-modulos.js",
     "probar:integraciones": "node scripts/probar-integraciones.js"
   },
   "dependencies": {

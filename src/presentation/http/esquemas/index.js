@@ -6,6 +6,7 @@ import { USOS_IMAGEN } from '../../../application/use-cases/archivos/FirmarSubid
 import { ESTADOS_PEDIDO, CANALES } from '../../../domain/shared/catalogos.js';
 import { SEGMENTOS } from '../../../application/services/Campanas.js';
 import { TEXTOS_AVISO } from '../../../domain/avisos/textos.js';
+import { TIPOS_CAMPO, PLANTILLAS_MODULO } from '../../../domain/modulos/modulos.js';
 
 const texto = (max = 200) => z.string().trim().min(1, 'Requerido').max(max);
 const email = z.string().trim().toLowerCase().email('Correo inválido');
@@ -278,6 +279,34 @@ export const plataforma = {
   }),
   adminFiltro: z.object({ texto: z.string().max(80).optional() }),
   adminEditar: z.object({ activa: z.boolean(), motivo: z.string().max(200).optional() }),
+};
+
+const campoModulo = z.object({
+  id: z.string().max(40).optional(),
+  nombre: texto(60),
+  tipo: z.enum(TIPOS_CAMPO),
+  opciones: z.array(z.string().trim().max(60)).max(20).default([]),
+  requerido: z.boolean().default(false),
+  enLista: z.boolean().default(true),
+  avisar: z.boolean().default(false),
+});
+const datosModulo = {
+  nombre: texto(60),
+  singular: texto(60),
+  icono: z.string().max(30),
+  descripcion: z.string().max(200),
+  prefijo: z.string().regex(/^[A-Za-z]{1,4}$/, 'El prefijo son de 1 a 4 letras'),
+  campos: z.array(campoModulo).min(1, 'Agrega al menos un campo').max(20),
+};
+
+export const modulos = {
+  crear: z.object({ plantilla: z.enum(Object.keys(PLANTILLAS_MODULO)).optional(), ...datosModulo }).partial(),
+  editar: z
+    .object({ ...datosModulo, activo: z.boolean(), orden: z.number().int().min(0).max(100) })
+    .partial()
+    .refine((o) => Object.keys(o).length > 0, 'Nada que cambiar'),
+  filtro: z.object({ texto: z.string().max(80).optional(), campo: z.string().max(40).optional(), valor: z.string().max(120).optional() }),
+  registro: z.object({ datos: z.record(z.any()), avisar: z.boolean().default(true) }),
 };
 
 export const archivos = {

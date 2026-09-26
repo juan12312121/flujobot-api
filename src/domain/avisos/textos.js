@@ -40,6 +40,7 @@ export const TEXTOS_AVISO = {
   'recordatorio.hora':
     'Hola {{nombre}}, tu {{cita}} {{servicio}} es *hoy a las {{hora}}* (en una hora).\n\nResponde *1* para confirmar o *2* para cancelar.',
   'encuesta.pedido': '¿Cómo calificarías tu {{pedido}} *{{folio}}*? Responde con un número del *1* (malo) al *5* (excelente).',
+  'registro.cambio': 'Hola {{nombre}}, tu {{registro}} *{{folio}}* ahora está: *{{valor}}*.',
   'carrito.abandonado': 'Hola {{nombre}}, vimos que dejaste tu {{pedido}} a medias ({{total}}). ¿Lo terminamos? Te dejo donde te quedaste:',
 };
 

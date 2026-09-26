@@ -109,6 +109,10 @@ export class Flujo {
         if (!Number.isFinite(minutos) || minutos < 1 || minutos > 7 * 24 * 60) error(n.id, 'El tiempo de espera debe ser de 1 minuto a 7 días');
         break;
       }
+      case 'registro':
+      case 'consulta':
+        if (vacio(d.moduloId)) error(n.id, 'Elige el módulo de este bloque');
+        break;
       case 'encuesta':
         if (d.texto != null && typeof d.texto !== 'string') error(n.id, 'La pregunta de la encuesta debe ser texto');
         break;

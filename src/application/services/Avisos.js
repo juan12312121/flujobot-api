@@ -60,6 +60,31 @@ export class Avisos {
     };
   }
 
+  // ───── Módulos personalizados ─────
+
+  /** Cambió un campo con "avisar" (p. ej. Estado de una orden de servicio): se le escribe al cliente. */
+  async registroCambio(modulo, registro, campo) {
+    const telefono = modulo.campos.find((c) => c.tipo === 'telefono' && registro.datos?.[c.id]);
+    const porBot = CANALES_REALES.includes(registro.canal) && registro.contacto;
+    const canal = porBot ? registro.canal : 'whatsapp';
+    const contacto = porBot ? registro.contacto : registro.datos?.[telefono?.id];
+    if (!contacto) return { enviado: false, motivo: 'el registro no tiene teléfono ni conversación' };
+    const bot = (registro.botId && (await this.bots.obtener(registro.empresaId, registro.botId))) || (await this.bots.principal(registro.empresaId));
+    if (!bot) return { enviado: false, motivo: 'la empresa no tiene un bot publicado' };
+    const empresa = await this.empresas.obtener(registro.empresaId);
+    const primerTexto = modulo.campos.find((c) => c.tipo === 'texto' && registro.datos?.[c.id]);
+    const variables = {
+      nombre: primerNombre(registro.nombreContacto || registro.datos?.[primerTexto?.id]),
+      registro: modulo.singular.toLowerCase(),
+      folio: registro.folio,
+      valor: registro.datos?.[campo.id],
+      empresa: empresa?.nombre ?? '',
+    };
+    const texto = limpiarTexto(interpolar(textoAviso(empresa, 'registro.cambio'), variables));
+    const r = await this.mensajero.enviar({ bot, canal, contacto, nombre: variables.nombre, respuestas: [{ texto }], de: 'sistema', autor: 'Aviso automático' });
+    return { enviado: r.ok, error: r.error };
+  }
+
   // ───── Citas ─────
 
   async citaCambioEstado(cita) {

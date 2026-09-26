@@ -22,6 +22,8 @@ export const TIPOS_DE_NODO = Object.freeze({
   esperar: { nombre: 'Esperar respuesta', salidas: ['respondio', 'sin_respuesta'], espera: true },
   encuesta: { nombre: 'Encuesta de satisfacción', salidas: ['buena', 'mala'], espera: true },
   permiso: { nombre: 'Pedir permiso para promociones', salidas: ['acepto', 'no_acepto'], espera: true },
+  registro: { nombre: 'Guardar en módulo', salidas: ['siguiente'], espera: false },
+  consulta: { nombre: 'Consultar módulo', salidas: ['encontrado', 'nada'], espera: false },
   humano: { nombre: 'Pasar a un asesor', salidas: [], espera: false },
   fin: { nombre: 'Fin', salidas: [], espera: false },
 });

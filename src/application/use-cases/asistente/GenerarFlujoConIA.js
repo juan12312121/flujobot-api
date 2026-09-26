@@ -30,6 +30,8 @@ Conviertes lo que la persona describe con sus palabras en un FLUJO de bloques co
 - esperar: espera a que el cliente conteste un tiempo; si no contesta, sigue por otra salida (seguimientos, recordatorios). datos: { "texto": "mensaje opcional", "minutos": 120 }. Salidas: "respondio" (guarda {{respuesta}}) y "sin_respuesta".
 - encuesta: pide calificar la atención del 1 al 5. datos: { "texto": "...", "pedirComentario": true|false }. Salidas: "buena" (4-5) y "mala" (1-3).
 - permiso: pregunta si acepta recibir promociones (sin permiso no entra a las campañas). datos: { "texto": "..." }. Salidas: "acepto" y "no_acepto".
+- registro: guarda lo que dio el cliente en un MÓDULO de la empresa (ver "Módulos" abajo). datos: { "moduloId": "id del módulo", "campos": { "idDelCampo": "{{variable}}" }, "texto": "confirmación con {{folio}}" }. Salida: "siguiente". Pide antes los datos con bloques "pregunta".
+- consulta: muestra al cliente sus registros de un módulo (p. ej. "¿cómo va mi reparación?"). datos: { "moduloId": "id del módulo", "texto": "..." }. Salidas: "encontrado" y "nada".
 - humano: pasa la conversación a una persona del equipo. datos: { "texto": "..." }. Sin salidas.
 - fin: termina la conversación. datos: { "texto": "despedida" }. Sin salidas.
 
@@ -65,20 +67,21 @@ Conviertes lo que la persona describe con sus palabras en un FLUJO de bloques co
  * No guarda nada: devuelve la propuesta y la persona decide si la aplica.
  */
 export class GenerarFlujoConIA extends UseCase {
-  constructor({ ia, empresas, productos }) {
+  constructor({ ia, empresas, productos, modulos }) {
     super();
-    Object.assign(this, { ia, empresas, productos });
+    Object.assign(this, { ia, empresas, productos, modulos });
   }
 
   /**
    * @param {{ actor: object, descripcion: string, base?: { nodos: object[], conexiones: object[] } }} entrada
    */
   async ejecutar({ actor, descripcion, base }) {
-    const [empresa, catalogo] = await Promise.all([
+    const [empresa, catalogo, modulos] = await Promise.all([
       this.empresas.obtener(actor.empresaId),
       this.productos.buscar(actor.empresaId, { soloActivos: true }),
+      this.modulos ? this.modulos.deEmpresa(actor.empresaId) : [],
     ]);
-    const mensajes = [{ role: 'user', content: this.#peticion({ descripcion, base, empresa, catalogo }) }];
+    const mensajes = [{ role: 'user', content: this.#peticion({ descripcion, base, empresa, catalogo, modulos }) }];
 
     let propuesta;
     let problemas = [];
@@ -108,7 +111,7 @@ export class GenerarFlujoConIA extends UseCase {
     return { resumen: propuesta.resumen, supuestos: propuesta.supuestos, nodos, conexiones, problemas, modelo };
   }
 
-  #peticion({ descripcion, base, empresa, catalogo }) {
+  #peticion({ descripcion, base, empresa, catalogo, modulos = [] }) {
     const t = empresa?.terminos ?? {};
     const h = empresa?.horario;
     const lineas = [
@@ -127,6 +130,11 @@ export class GenerarFlujoConIA extends UseCase {
             .map((p) => `${p.nombre}${p.tipo === 'servicio' ? ' (servicio)' : ''}${p.categoria ? ` [${p.categoria}]` : ''}`)
             .join('; ')}`
         : '- Todavía no tiene catálogo cargado.',
+      modulos.length
+        ? `- Módulos (usa "registro"/"consulta" solo si lo que pide encaja con uno): ${modulos
+            .map((m) => `${m.nombre} [moduloId ${m.id}] campos: ${m.campos.map((c) => `${c.id} (${c.tipo})`).join(', ')}`)
+            .join(' | ')}`
+        : '',
     ];
     if (base?.nodos?.length) {
       const actual = { nodos: base.nodos.map(({ id, tipo, datos }) => ({ id, tipo, datos })), conexiones: base.conexiones.map(({ origen, puerto, destino }) => ({ origen, puerto, destino })) };

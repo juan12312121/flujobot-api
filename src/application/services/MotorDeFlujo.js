@@ -4,6 +4,7 @@ import { cumpleCondicion, describirCondicion } from '../../domain/flujo/condicio
 import { agregarAlCarrito, totalCarrito, resumenCarrito } from '../../domain/pedidos/carrito.js';
 import { diasDisponibles, espaciosDelDia, rangoBusqueda, nombreDia, aLocal } from '../../domain/agenda/disponibilidad.js';
 import { ESTADO_PEDIDO_TEXTO, ESTADO_CITA_TEXTO, PAGO_TEXTO, PALABRAS_SI, PALABRAS_NO } from '../../domain/avisos/textos.js';
+import { validarDatos, valorLegible } from '../../domain/modulos/modulos.js';
 
 /** Freno contra flujos en círculo (mensaje → condición → mensaje...) que no esperan respuesta. */
 const MAX_PASOS = 40;
@@ -29,15 +30,17 @@ export class MotorDeFlujo {
    *   clienteWebhook: { enviar(url: string, cuerpo: object): Promise<any> },
    *   respondedor?: { responder(entrada: object): Promise<string | null> },
    *   cobros?: { link(entrada: { empresaId: string, pedido: object, canal: string }): Promise<string | null> },
+   *   registros?: import('./RegistrosBot.js').RegistrosBot,
    *   reloj?: () => Date,
    * }} deps
    *
    * Además de las respuestas, el motor devuelve `efectos`: cosas que pasan fuera de la plática y que
    * aplica quien lo llama (programar una espera, guardar una encuesta, el permiso de promociones...).
    */
-  constructor({ productos, pedidos, citas, clienteWebhook, respondedor, cobros, reloj = () => new Date() }) {
+  constructor({ productos, pedidos, citas, clienteWebhook, respondedor, cobros, registros, reloj = () => new Date() }) {
     this.respondedor = respondedor;
     this.cobros = cobros;
+    this.registros = registros;
     this.productos = productos;
     this.citas = citas;
     this.pedidos = pedidos;
@@ -215,6 +218,57 @@ export class MotorDeFlujo {
             ? `Se registró el pedido ${pedido.folio} por ${s.variables.total}.`
             : `Se registró la solicitud ${pedido.folio} con los datos que dio el cliente.`) + cobro,
         );
+      }
+
+      case 'registro': {
+        const modulo = d.moduloId && this.registros ? await this.registros.modulo(contexto.empresaId, d.moduloId) : null;
+        if (!modulo) {
+          paso.error = true;
+          return ir('siguiente', 'El módulo de este bloque ya no existe, así que no se guardó nada.');
+        }
+        const entrada = {};
+        for (const c of modulo.campos) {
+          const plantilla = d.campos?.[c.id];
+          if (plantilla) entrada[c.id] = this.#texto(ejecucion, plantilla);
+          // Sin mapear, el teléfono se llena solo con el número de WhatsApp de quien escribe
+          else if (c.tipo === 'telefono' && contexto.canal === 'whatsapp') entrada[c.id] = s.contacto;
+        }
+        // Lo que no sea válido se omite en vez de perder el registro completo
+        const { datos, errores } = validarDatos(modulo.campos, entrada, { parcial: true });
+        const r = await this.registros.guardar({
+          empresaId: contexto.empresaId,
+          modulo,
+          datos,
+          canal: contexto.canal ?? 'whatsapp',
+          contacto: s.contacto,
+          nombreContacto: s.variables.cliente || s.nombre || '',
+          botId: contexto.botId,
+        });
+        s.variables.folio = r.folio;
+        s.variables.registro = { folio: r.folio, ...datos };
+        this.#decir(ejecucion, d.texto || `¡Listo! Quedó registrado con el folio *{{folio}}*.`);
+        const omitidos = errores.length ? ` Se omitieron datos no válidos (${errores.map((e) => e.mensaje).join('; ')}).` : '';
+        if (errores.length) paso.error = true;
+        return ir('siguiente', `Se guardó en "${modulo.nombre}" con el folio ${r.folio}.${omitidos}`);
+      }
+
+      case 'consulta': {
+        const modulo = d.moduloId && this.registros ? await this.registros.modulo(contexto.empresaId, d.moduloId) : null;
+        if (!modulo) {
+          paso.error = true;
+          this.#decir(ejecucion, d.textoNada || 'Por ahora no puedo consultar eso.');
+          return ir('nada', 'El módulo de este bloque ya no existe.');
+        }
+        const lista = await this.registros.delContacto(contexto.empresaId, modulo, s.contacto);
+        if (lista.length === 0) {
+          this.#decir(ejecucion, d.textoNada || `No encontré ningún registro de ${modulo.nombre.toLowerCase()} con tus datos.`);
+          return ir('nada', `El bot buscó en "${modulo.nombre}" y no encontró nada de este cliente.`);
+        }
+        const mostrar = modulo.campos.filter((c) => (d.mostrar?.length ? d.mostrar.includes(c.id) : c.enLista) && c.tipo !== 'telefono').slice(0, 5);
+        const lineas = lista.map((r) => `• *${r.folio}* — ${mostrar.map((c) => `${c.nombre}: ${valorLegible(c, r.datos?.[c.id], contexto.moneda)}`).join(' · ')}`);
+        s.variables.registro = { folio: lista[0].folio, ...lista[0].datos };
+        this.#decir(ejecucion, `${this.#texto(ejecucion, d.texto || 'Esto es lo que encontré:')}\n\n${lineas.join('\n')}`, false);
+        return ir('encontrado', `El bot le mostró ${lista.length} registro(s) de "${modulo.nombre}".`);
       }
 
       case 'estado': {

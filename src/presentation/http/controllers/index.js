@@ -104,6 +104,19 @@ export class CampanaController extends BaseController {
   contactos = this.accion('listarContactos', { query: esquemas.campanas.contactos });
 }
 
+export class ModuloController extends BaseController {
+  plantillas = this.accion('listarPlantillasModulo');
+  listar = this.accion('listarModulos');
+  obtener = this.accion('obtenerModulo');
+  crear = this.accion('crearModulo', { body: esquemas.modulos.crear, status: 201 });
+  editar = this.accion('editarModulo', { body: esquemas.modulos.editar });
+  borrar = this.accion('borrarModulo', { status: 204 });
+  registros = this.accion('listarRegistros', { query: esquemas.modulos.filtro });
+  crearRegistro = this.accion('crearRegistro', { body: esquemas.modulos.registro, status: 201 });
+  editarRegistro = this.accion('editarRegistro', { body: esquemas.modulos.registro });
+  borrarRegistro = this.accion('borrarRegistro', { status: 204 });
+}
+
 export class GestionController extends BaseController {
   encuestas = this.accion('listarEncuestas', { query: esquemas.gestion.encuestas });
   actividad = this.accion('listarActividad', { query: esquemas.gestion.actividad });
