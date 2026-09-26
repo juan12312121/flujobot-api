@@ -107,8 +107,6 @@ export class CampanaController extends BaseController {
 export class GestionController extends BaseController {
   encuestas = this.accion('listarEncuestas', { query: esquemas.gestion.encuestas });
   actividad = this.accion('listarActividad', { query: esquemas.gestion.actividad });
-  plan = this.accion('obtenerPlan');
-  pagarPlan = this.accion('pagarPlan', { body: esquemas.plataforma.pagarPlan });
   cobros = this.accion('obtenerCobros');
   configurarCobros = this.accion('configurarCobros', { body: esquemas.plataforma.cobros });
 }
@@ -147,7 +145,6 @@ export class EntradaController extends BaseController {
     extra: (req) => ({ query: req.query, cuerpo: req.body, crudo: req.rawBody?.toString('utf8') ?? '', firma: req.get('stripe-signature') }),
   });
 
-  pagoPlataforma = this.accion('recibirPagoPlataforma', { extra: (req) => ({ query: req.query, cuerpo: req.body }) });
 
   tick = this.accion('correrProgramador', { extra: (req) => ({ secreto: req.get('x-cron-secreto') }) });
 }

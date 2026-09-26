@@ -12,14 +12,13 @@ import { SIN_AUDIO } from '../../services/Voz.js';
  */
 
 export class ConectarTelegram extends UseCase {
-  constructor({ bots, empresas, telegram, cifrador, generador, limites, bitacora, apiUrl }) {
+  constructor({ bots, telegram, cifrador, generador, bitacora, apiUrl }) {
     super();
-    Object.assign(this, { bots, empresas, telegram, cifrador, generador, limites, bitacora, apiUrl });
+    Object.assign(this, { bots, telegram, cifrador, generador, bitacora, apiUrl });
   }
 
   async ejecutar({ actor, botId, token }) {
     const bot = existe(await this.bots.obtener(actor.empresaId, botId), 'Bot no encontrado');
-    this.limites.exigirCanal(await this.empresas.obtener(actor.empresaId), 'telegram');
     const yo = await this.telegram.quienSoy(token).catch(() => {
       throw new ReglaDeNegocioError('TOKEN_INVALIDO', 'Telegram no reconoció ese token. Cópialo completo de @BotFather.');
     });
@@ -51,15 +50,14 @@ export class DesconectarTelegram extends UseCase {
 }
 
 export class ConectarMeta extends UseCase {
-  constructor({ bots, empresas, meta, cifrador, limites, bitacora, metaConfigurada }) {
+  constructor({ bots, meta, cifrador, bitacora, metaConfigurada }) {
     super();
-    Object.assign(this, { bots, empresas, meta, cifrador, limites, bitacora, metaConfigurada });
+    Object.assign(this, { bots, meta, cifrador, bitacora, metaConfigurada });
   }
 
   async ejecutar({ actor, botId, token }) {
     if (!this.metaConfigurada) throw new NoConfiguradoError('La app de Meta no está configurada en el servidor (META_APP_SECRET / META_VERIFY_TOKEN)');
     const bot = existe(await this.bots.obtener(actor.empresaId, botId), 'Bot no encontrado');
-    this.limites.exigirCanal(await this.empresas.obtener(actor.empresaId), 'messenger');
     const pagina = await this.meta.pagina(token).catch((e) => {
       throw new ReglaDeNegocioError('TOKEN_INVALIDO', `Meta no aceptó el token de la página: ${e.message}`);
     });

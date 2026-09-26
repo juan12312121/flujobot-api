@@ -16,7 +16,6 @@ import {
   EncuestaModel,
   VersionModel,
   ActividadModel,
-  UsoModel,
 } from '../models/index.js';
 
 const oid = (id) => new mongoose.Types.ObjectId(String(id));
@@ -507,21 +506,5 @@ export class ActividadRepository extends MongoRepository {
   async buscar(empresaId, { entidad, usuario, limite = 200 } = {}) {
     const filtro = { ...(entidad ? { entidad } : {}), ...(usuario ? { usuario } : {}) };
     return this.listar(empresaId, filtro, { orden: { fecha: -1 }, limite });
-  }
-}
-
-export class UsoRepository {
-  async sumar(empresaId, mes, campo, n = 1) {
-    await UsoModel.updateOne({ empresaId, mes }, { $inc: { [campo]: n } }, { upsert: true });
-  }
-
-  async obtener(empresaId, mes) {
-    const doc = await UsoModel.findOne({ empresaId, mes }).lean();
-    return { conversaciones: doc?.conversaciones ?? 0, ia: doc?.ia ?? 0, campanas: doc?.campanas ?? 0 };
-  }
-
-  async delMes(mes) {
-    const docs = await UsoModel.find({ mes }).lean();
-    return new Map(docs.map((d) => [String(d.empresaId), { conversaciones: d.conversaciones, ia: d.ia, campanas: d.campanas }]));
   }
 }

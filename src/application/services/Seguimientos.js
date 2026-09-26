@@ -11,8 +11,8 @@ const HORA = 3600_000;
  * - carritos abandonados: a las N horas se le recuerda al cliente y se le vuelve a mostrar dónde se quedó.
  */
 export class Seguimientos {
-  constructor({ bots, empresas, conversaciones, motor, atender, mensajero, limites, reloj = () => new Date() }) {
-    Object.assign(this, { bots, empresas, conversaciones, motor, atender, mensajero, limites, reloj });
+  constructor({ bots, empresas, conversaciones, motor, atender, mensajero, reloj = () => new Date() }) {
+    Object.assign(this, { bots, empresas, conversaciones, motor, atender, mensajero, reloj });
   }
 
   /** Manejador de la tarea "reanudar_espera". */
@@ -38,7 +38,7 @@ export class Seguimientos {
     for (const bot of await this.bots.conRecuperacion()) {
       if (!bot.publicado?.nodos?.length) continue;
       const empresa = await this.empresas.obtener(bot.empresaId);
-      if (!empresa || empresa.activa === false || !(await this.limites.puede(empresa, 'conversaciones', 0))) continue;
+      if (!empresa || empresa.activa === false) continue;
       const horas = Math.min(Math.max(Number(bot.recuperacion.horas) || 2, 1), 48);
       // Messenger e Instagram solo dejan escribir dentro de 24 h desde el último mensaje del cliente
       const canales = ['whatsapp', 'telegram', ...(horas < 23 ? ['messenger', 'instagram'] : [])];

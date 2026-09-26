@@ -1,11 +1,9 @@
 import { UseCase } from '../../shared/UseCase.js';
 import { NoAutenticadoError, NoConfiguradoError, NoEncontradoError } from '../../shared/errors.js';
-import { ReglaDeNegocioError } from '../../../domain/shared/errors.js';
-import { PLANES, PLANES_DE_PAGO, planDe, planVigente, mesDe } from '../../../domain/planes/planes.js';
 import { exigirAdmin } from '../../services/permisos.js';
 
 /**
- * Cobros de la empresa (Mercado Pago / Stripe), el plan de FlujoBot y el panel del superadministrador.
+ * Cobros de la empresa (Mercado Pago / Stripe) y el panel del superadministrador.
  */
 
 // ───── Cobros de la empresa a sus clientes ─────
@@ -58,103 +56,42 @@ export class RecibirAvisoPago extends UseCase {
   }
 }
 
-// ───── Plan de FlujoBot ─────
-
-export class ObtenerPlan extends UseCase {
-  constructor({ limites, pagoPlataforma }) {
-    super();
-    Object.assign(this, { limites, pagoPlataforma });
-  }
-
-  async ejecutar({ actor }) {
-    return { ...(await this.limites.estado(actor.empresaId)), pagoEnLinea: this.pagoPlataforma.configurado };
-  }
-}
-
-/** Link de Mercado Pago (cuenta de FlujoBot) para pagar un mes del plan elegido. */
-export class PagarPlan extends UseCase {
-  constructor({ empresas, pagoPlataforma, bitacora }) {
-    super();
-    Object.assign(this, { empresas, pagoPlataforma, bitacora });
-  }
-
-  async ejecutar({ actor, plan }) {
-    exigirAdmin(actor);
-    if (!PLANES_DE_PAGO.includes(plan)) throw new ReglaDeNegocioError('PLAN_INVALIDO', 'Elige un plan de pago');
-    if (!this.pagoPlataforma.configurado) throw new NoConfiguradoError('El pago en línea aún no está disponible: escríbenos para activar tu plan');
-    const empresa = await this.empresas.obtener(actor.empresaId);
-    const url = await this.pagoPlataforma.link(empresa, plan);
-    await this.bitacora.registrar(actor, 'plan.pagar', { entidad: 'empresa', entidadId: empresa.id, detalle: PLANES[plan].nombre });
-    return { url };
-  }
-}
-
-export class RecibirPagoPlataforma extends UseCase {
-  constructor({ pagoPlataforma, pagoIdMercadoPago }) {
-    super();
-    Object.assign(this, { pagoPlataforma, pagoIdMercadoPago });
-  }
-
-  async ejecutar({ query, cuerpo }) {
-    const pagoId = this.pagoIdMercadoPago({ query, cuerpo });
-    if (!pagoId) return { ignorado: 'no es un pago' };
-    return this.pagoPlataforma.confirmar(pagoId);
-  }
-}
-
 // ───── Superadministrador ─────
 
 export class ListarEmpresasAdmin extends UseCase {
-  constructor({ empresas, usos, bots, usuarios, reloj = () => new Date() }) {
+  constructor({ empresas, bots }) {
     super();
-    Object.assign(this, { empresas, usos, bots, usuarios, reloj });
+    Object.assign(this, { empresas, bots });
   }
 
   async ejecutar({ texto }) {
-    const mes = mesDe(this.reloj());
-    const [lista, usos, bots] = await Promise.all([this.empresas.listarTodas({ texto }), this.usos.delMes(mes), this.bots.contarTodos()]);
-    return lista.map((e) => {
-      const plan = planDe(e);
-      return {
-        id: e.id,
-        nombre: e.nombre,
-        giro: e.giro,
-        activa: e.activa !== false,
-        suspendidaMotivo: e.suspendidaMotivo ?? '',
-        plan: e.plan?.clave ?? 'prueba',
-        planNombre: plan.nombre,
-        vence: e.plan?.vence ?? null,
-        vigente: planVigente(e, this.reloj()),
-        bots: bots.get(e.id) ?? 0,
-        uso: usos.get(e.id) ?? { conversaciones: 0, ia: 0, campanas: 0 },
-        limites: { conversaciones: plan.conversaciones, ia: plan.ia, campanas: plan.campanas },
-        creada: e.createdAt,
-      };
-    });
+    const [lista, bots] = await Promise.all([this.empresas.listarTodas({ texto }), this.bots.contarTodos()]);
+    return lista.map((e) => ({
+      id: e.id,
+      nombre: e.nombre,
+      giro: e.giro,
+      activa: e.activa !== false,
+      suspendidaMotivo: e.suspendidaMotivo ?? '',
+      bots: bots.get(e.id) ?? 0,
+      creada: e.createdAt,
+    }));
   }
 }
 
-/** Suspender/reactivar, cambiar de plan o mover el vencimiento de una empresa. */
+/** Suspender o reactivar una empresa (suspendida: nadie entra al panel y sus bots no contestan). */
 export class ActualizarEmpresaAdmin extends UseCase {
   constructor({ empresas, bitacora }) {
     super();
     Object.assign(this, { empresas, bitacora });
   }
 
-  async ejecutar({ actor, empresaId, activa, motivo, plan, vence, sumarDias }) {
+  async ejecutar({ actor, empresaId, activa, motivo }) {
     const e = await this.empresas.obtener(empresaId);
     if (!e) throw new NoEncontradoError('Empresa no encontrada');
-    const cambios = {};
-    if (activa !== undefined) Object.assign(cambios, { activa, suspendidaMotivo: activa ? '' : (motivo ?? '') });
-    if (plan) cambios['plan.clave'] = plan;
-    if (vence) cambios['plan.vence'] = new Date(vence);
-    if (sumarDias) {
-      const base = Math.max(Date.now(), new Date(e.plan?.vence ?? Date.now()).getTime());
-      cambios['plan.vence'] = new Date(base + sumarDias * 86400000);
-    }
-    const r = await this.empresas.actualizar(empresaId, cambios);
+    const r = await this.empresas.actualizar(empresaId, { activa, suspendidaMotivo: activa ? '' : (motivo ?? '') });
     // Queda en la bitácora de la empresa afectada: su admin ve quién la cambió
-    await this.bitacora.registrar({ ...actor, empresaId }, 'admin.empresa', { entidad: 'empresa', entidadId: empresaId, detalle: JSON.stringify({ activa, plan, vence, sumarDias }) });
+    const detalle = activa ? 'Reactivada' : `Suspendida${motivo ? `: ${motivo}` : ''}`;
+    await this.bitacora.registrar({ ...actor, empresaId }, 'admin.empresa', { entidad: 'empresa', entidadId: empresaId, detalle });
     return r;
   }
 }

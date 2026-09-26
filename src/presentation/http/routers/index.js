@@ -126,13 +126,11 @@ export class CampanaRouter extends BaseRouter {
   }
 }
 
-/** Encuestas, bitácora, plan y cobros de la empresa. */
+/** Encuestas, bitácora y cobros de la empresa. */
 export class GestionRouter extends BaseRouter {
   rutas() {
     this.get('/encuestas', 'encuestas');
     this.get('/actividad', 'actividad');
-    this.get('/plan', 'plan');
-    this.post('/plan/pagar', 'pagarPlan');
     this.get('/cobros', 'cobros');
     this.put('/cobros', 'configurarCobros');
   }
@@ -151,7 +149,6 @@ export class EntradaRouter extends BaseRouter {
     this.post('/telegram/:botId', 'telegram');
     this.get('/meta', 'metaVerificar');
     this.post('/meta', 'meta');
-    this.post('/pagos/plataforma', 'pagoPlataforma');
     this.post('/pagos/:proveedor/:empresaId', 'pago');
   }
 }

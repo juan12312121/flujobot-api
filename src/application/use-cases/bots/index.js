@@ -33,14 +33,13 @@ export class ListarBots extends UseCase {
 }
 
 export class CrearBot extends UseCase {
-  constructor({ bots, empresas, generador, limites, bitacora }) {
+  constructor({ bots, empresas, generador, bitacora }) {
     super();
-    Object.assign(this, { bots, empresas, generador, limites, bitacora });
+    Object.assign(this, { bots, empresas, generador, bitacora });
   }
 
   /** Sin plantilla elegida, se usa la recomendada para el giro de la empresa. */
   async ejecutar({ actor, nombre, descripcion = '', plantilla, flujo }) {
-    await this.limites?.exigirBotNuevo(actor.empresaId);
     plantilla ??= plantillaDeGiro((await this.empresas.obtener(actor.empresaId))?.giro);
     const inicial = flujo ?? PLANTILLAS[plantilla]();
     const base = nombre

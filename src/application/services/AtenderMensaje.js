@@ -9,14 +9,14 @@ import { CANALES_REALES } from '../shared/canales.js';
  * y guarda estado + historial. Lo comparten todos los canales y el simulador (borrador).
  *
  * Antes del motor:
- *  - empresa suspendida, plan vencido o canal fuera del plan → el bot no contesta;
+ *  - empresa suspendida → el bot no contesta;
  *  - BAJA / ALTA → permiso de promociones;
  *  - una respuesta pendiente fuera del flujo (confirmar un recordatorio de cita, calificar un pedido).
  * Después del motor aplica sus `efectos` (esperas programadas, encuestas, permisos, compras, recordatorios).
  */
 export class AtenderMensaje {
-  constructor({ motor, conversaciones, empresas, estadisticas, contactos, encuestas, citas, limites, programador, avisos, reloj = () => new Date() }) {
-    Object.assign(this, { motor, conversaciones, empresas, estadisticas, contactos, encuestas, citas, limites, programador, avisos, reloj });
+  constructor({ motor, conversaciones, empresas, estadisticas, contactos, encuestas, citas, programador, avisos, reloj = () => new Date() }) {
+    Object.assign(this, { motor, conversaciones, empresas, estadisticas, contactos, encuestas, citas, programador, avisos, reloj });
   }
 
   /**
@@ -33,7 +33,7 @@ export class AtenderMensaje {
     const textoHistorial = notaDeVoz ? `Nota de voz: "${texto}"` : texto;
 
     if (real) {
-      const motivo = await this.#bloqueado(empresa, canal, previa);
+      const motivo = !empresa || empresa.activa === false ? 'empresa suspendida' : null;
       if (motivo) return { respuestas: [], recorrido: [], efectos: [], conversacion: previa ?? { estado: 'nueva' }, flujo, ignorado: motivo };
       await this.contactos?.registrar({ empresaId: bot.empresaId, botId: bot.id, canal, contacto, nombre }).catch(() => {});
 
@@ -59,7 +59,6 @@ export class AtenderMensaje {
     const conversacion = await this.conversaciones.guardar(clave, camino ? { ...nueva, camino } : nueva, mensajes);
 
     if (real) {
-      if (arrancoConversacion(recorrido)) await this.limites?.sumar(bot.empresaId, 'conversaciones');
       await this.aplicarEfectos({ bot, canal, contacto, nombre: conversacion.nombre, conversacion, efectos });
     }
     return { respuestas, recorrido, efectos, conversacion, flujo };
@@ -103,17 +102,6 @@ export class AtenderMensaje {
         console.warn(`No se aplicó el efecto ${e.tipo}:`, err.message);
       }
     }
-  }
-
-  /** Motivo por el que el bot no contesta, o null. */
-  async #bloqueado(empresa, canal, previa) {
-    if (!empresa || empresa.activa === false) return 'empresa suspendida';
-    if (!this.limites) return null;
-    if (!this.limites.canalPermitido(empresa, canal)) return `el plan no incluye ${canal}`;
-    // Las conversaciones abiertas terminan aunque se llegue al límite; lo que se frena son las nuevas
-    const abierta = previa?.estado === 'activa' || previa?.estado === 'humano';
-    if (!abierta && !(await this.limites.puede(empresa, 'conversaciones'))) return 'límite de conversaciones del plan (o plan vencido)';
-    return null;
   }
 
   /** BAJA/ALTA y respuestas a recordatorios o encuestas de pedido. Devuelve { respuestas, cambios } o null. */
@@ -187,6 +175,3 @@ export class AtenderMensaje {
     return camino;
   }
 }
-
-/** El recorrido empezó en el Inicio (conversación nueva o reiniciada). */
-const arrancoConversacion = (recorrido) => recorrido[0]?.tipo === 'inicio' && Boolean(recorrido[0].puerto);

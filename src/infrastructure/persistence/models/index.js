@@ -58,13 +58,6 @@ const EmpresaSchema = new Schema(
       llaveCifrada: { type: String, default: '', select: false },
       secretoWebhookCifrado: { type: String, default: '', select: false },
     },
-    /** Plan de FlujoBot (domain/planes/planes.js). vence: fin de la prueba o del mes pagado. */
-    plan: {
-      clave: { type: String, default: 'prueba' },
-      vence: { type: Date, default: () => new Date(Date.now() + 14 * 86400000) },
-      /** Último pago de Mercado Pago aplicado (evita sumar dos veces el mismo aviso). */
-      ultimoPago: { type: String, default: '' },
-    },
     suspendidaMotivo: { type: String, default: '' },
   },
   { timestamps: true, minimize: false },
@@ -377,16 +370,6 @@ const ActividadSchema = new Schema(
 );
 ActividadSchema.index({ empresaId: 1, fecha: -1 });
 
-/** Consumo del mes por empresa (conversaciones, respuestas de IA, mensajes de campaña) para los límites del plan. */
-const UsoSchema = new Schema({
-  empresaId: ref('Empresa'),
-  mes: { type: String, required: true },
-  conversaciones: { type: Number, default: 0 },
-  ia: { type: Number, default: 0 },
-  campanas: { type: Number, default: 0 },
-});
-UsoSchema.index({ empresaId: 1, mes: 1 }, { unique: true });
-
 /** Consecutivos por empresa (folios de pedido). _id = "pedido:<empresaId>". */
 const ContadorSchema = new Schema({ _id: String, valor: { type: Number, default: 0 } });
 
@@ -405,4 +388,3 @@ export const CampanaModel = model('Campana', CampanaSchema);
 export const EncuestaModel = model('Encuesta', EncuestaSchema);
 export const VersionModel = model('Version', VersionSchema, 'versiones');
 export const ActividadModel = model('Actividad', ActividadSchema, 'actividad');
-export const UsoModel = model('Uso', UsoSchema);

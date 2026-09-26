@@ -21,8 +21,8 @@ const espera = (ms) => new Promise((r) => setTimeout(r, ms));
  * (WhatsApp bloquea números que mandan cientos de mensajes seguidos).
  */
 export class Campanas {
-  constructor({ campanas, contactos, conversaciones, citas, bots, empresas, mensajero, limites, reloj = () => new Date(), pausaMs = [1200, 2800] }) {
-    Object.assign(this, { campanas, contactos, conversaciones, citas, bots, empresas, mensajero, limites, reloj, pausaMs });
+  constructor({ campanas, contactos, conversaciones, citas, bots, empresas, mensajero, reloj = () => new Date(), pausaMs = [1200, 2800] }) {
+    Object.assign(this, { campanas, contactos, conversaciones, citas, bots, empresas, mensajero, reloj, pausaMs });
   }
 
   /** Destinatarios de un segmento (uno por canal + contacto). */
@@ -72,9 +72,7 @@ export class Campanas {
   }
 
   async #arrancar(c) {
-    const lista = await this.destinatarios(c.empresaId, c.segmento);
-    const restante = await this.limites.restante(c.empresaId, 'campanas');
-    const final = lista.slice(0, restante);
+    const final = await this.destinatarios(c.empresaId, c.segmento);
     await this.campanas.guardarAvance(c.id, {
       estado: final.length ? 'enviando' : 'enviada',
       destinatarios: final,
@@ -105,7 +103,6 @@ export class Campanas {
       else fallidos++;
       if (indice + 1 < fin) await espera(this.#pausa());
     }
-    if (enviados) await this.limites.sumar(c.empresaId, 'campanas', enviados);
     const terminada = indice >= lista.length;
     await this.campanas.guardarAvance(c.id, {
       indice,

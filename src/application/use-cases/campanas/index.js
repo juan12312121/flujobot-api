@@ -57,17 +57,16 @@ export class BorrarCampana extends UseCase {
   }
 }
 
-/** Programa el envío (ahora o en una fecha). Se revisa el plan y que haya destinatarios. */
+/** Programa el envío (ahora o en una fecha). Se revisa que haya canal y destinatarios. */
 export class ProgramarCampana extends UseCase {
-  constructor({ campanas, campanasServicio, limites, mensajero, bitacora, reloj = () => new Date() }) {
+  constructor({ campanas, campanasServicio, mensajero, bitacora, reloj = () => new Date() }) {
     super();
-    Object.assign(this, { campanas, campanasServicio, limites, mensajero, bitacora, reloj });
+    Object.assign(this, { campanas, campanasServicio, mensajero, bitacora, reloj });
   }
 
   async ejecutar({ actor, campanaId, cuando }) {
     const c = existe(await this.campanas.obtener(actor.empresaId, campanaId), 'Campaña no encontrada');
     if (c.estado !== 'borrador' && c.estado !== 'programada') throw new EstadoInvalidoError('CAMPANA_ENVIADA', 'Esta campaña ya se envió');
-    await this.limites.exigir(actor.empresaId, 'campanas');
     if (!this.mensajero.puedeIniciar('whatsapp') && !this.mensajero.puedeIniciar('telegram')) {
       throw new ReglaDeNegocioError('SIN_CANAL', 'No hay canal para enviar campañas (conecta WhatsApp o Telegram)');
     }
@@ -97,18 +96,14 @@ export class CancelarCampana extends UseCase {
 
 /** Cuánta gente recibiría la campaña con ese segmento (antes de programarla). */
 export class ContarSegmento extends UseCase {
-  constructor({ campanasServicio, contactos, limites }) {
+  constructor({ campanasServicio, contactos }) {
     super();
-    Object.assign(this, { campanasServicio, contactos, limites });
+    Object.assign(this, { campanasServicio, contactos });
   }
 
   async ejecutar({ actor, tipo, dias }) {
-    const [lista, resumen, restante] = await Promise.all([
-      this.campanasServicio.destinatarios(actor.empresaId, { tipo, dias }),
-      this.contactos.resumen(actor.empresaId),
-      this.limites.restante(actor.empresaId, 'campanas'),
-    ]);
-    return { destinatarios: lista.length, contactos: resumen.total, conPermiso: resumen.conPermiso, restanteDelMes: restante, segmentos: SEGMENTOS, canales: CANALES_CAMPANA };
+    const [lista, resumen] = await Promise.all([this.campanasServicio.destinatarios(actor.empresaId, { tipo, dias }), this.contactos.resumen(actor.empresaId)]);
+    return { destinatarios: lista.length, contactos: resumen.total, conPermiso: resumen.conPermiso, segmentos: SEGMENTOS, canales: CANALES_CAMPANA };
   }
 }
 

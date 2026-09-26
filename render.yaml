@@ -47,14 +47,12 @@ services:
       # Tu correo de FlujoBot para entrar al panel de superadministrador
       - key: SUPERADMINS
         sync: false
-      # Opcionales: notas de voz (Groq), Messenger/Instagram (app de Meta), cobro de planes (Mercado Pago)
+      # Opcionales: notas de voz (Groq) y Messenger/Instagram (app de Meta)
       - key: GROQ_API_KEY
         sync: false
       - key: META_APP_SECRET
         sync: false
       - key: META_VERIFY_TOKEN
-        sync: false
-      - key: MP_PLATAFORMA_TOKEN
         sync: false
       # Opcionales: n8n y Evolution (vacíos = "Publicar" genera el JSON para importar)
       - key: N8N_URL

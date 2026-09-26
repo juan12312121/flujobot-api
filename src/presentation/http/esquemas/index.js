@@ -5,7 +5,6 @@ import { GIROS } from '../../../domain/empresa/giros.js';
 import { USOS_IMAGEN } from '../../../application/use-cases/archivos/FirmarSubidaImagen.js';
 import { ESTADOS_PEDIDO, CANALES } from '../../../domain/shared/catalogos.js';
 import { SEGMENTOS } from '../../../application/services/Campanas.js';
-import { PLANES } from '../../../domain/planes/planes.js';
 import { TEXTOS_AVISO } from '../../../domain/avisos/textos.js';
 
 const texto = (max = 200) => z.string().trim().min(1, 'Requerido').max(max);
@@ -251,18 +250,8 @@ export const plataforma = {
     llave: z.string().trim().max(300).optional(),
     secretoWebhook: z.string().trim().max(300).optional(),
   }),
-  pagarPlan: z.object({ plan: z.enum(Object.keys(PLANES)) }),
   adminFiltro: z.object({ texto: z.string().max(80).optional() }),
-  adminEditar: z
-    .object({
-      activa: z.boolean(),
-      motivo: z.string().max(200),
-      plan: z.enum(Object.keys(PLANES)),
-      vence: z.string().datetime({ offset: true }),
-      sumarDias: z.number().int().min(-365).max(365),
-    })
-    .partial()
-    .refine((o) => Object.keys(o).length > 0, 'Nada que cambiar'),
+  adminEditar: z.object({ activa: z.boolean(), motivo: z.string().max(200).optional() }),
 };
 
 export const archivos = {

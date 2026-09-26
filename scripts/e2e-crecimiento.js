@@ -1,7 +1,7 @@
 /**
  * Prueba de punta a punta de las funciones de seguimiento y crecimiento, contra un MongoDB en memoria:
  * avisos de estado, bandeja del asesor, versiones, Esperar + Programador, encuestas, permisos y campañas,
- * carritos abandonados, recordatorios de cita, BAJA, planes y límites, superadministrador y bitácora.
+ * carritos abandonados, recordatorios de cita, BAJA, superadministrador y bitácora.
  *
  *   npm run e2e
  */
@@ -121,7 +121,6 @@ try {
     ].map(([origen, puerto, destino]) => ({ origen, puerto, destino })),
   };
   const bot2 = await api('POST', '/bots', { token: T, cuerpo: { nombre: 'Seguimiento', flujo: seguimiento }, esperado: 201 });
-  await api('POST', '/bots', { token: T, cuerpo: { nombre: 'Tercero' }, esperado: 422 }); // plan de prueba: 2 bots
   await api('POST', `/bots/${bot2.id}/publicar`, { token: T });
   const web2 = await api('PUT', `/bots/${bot2.id}/web`, { token: T, cuerpo: { activo: true } });
 
@@ -215,12 +214,6 @@ try {
   assert.equal(enviada.totales.fallidos, 1, 'el bot no tiene Telegram conectado: queda como fallido');
   await api('PATCH', `/campanas/${camp.id}`, { token: T, cuerpo: { nombre: 'otra' }, esperado: 409 });
 
-  // 13. Plan y límites
-  const plan = await api('GET', '/gestion/plan', { token: T });
-  assert.equal(plan.clave, 'prueba');
-  assert.equal(plan.uso.bots, 2);
-  assert.ok(plan.uso.conversaciones >= 3);
-
   // 14. Superadministrador
   await api('GET', '/admin/empresas', { token: T, esperado: 403 });
   const empresas = await api('GET', '/admin/empresas', { token: hq.token });
@@ -229,10 +222,7 @@ try {
   await api('POST', '/auth/login', { cuerpo: { email: 'pepe@test.mx', password: 'secreta123' }, esperado: 401 });
   await api('GET', '/auth/perfil', { token: T, esperado: 401 });
   assert.equal((await whatsapp('hola', '5215500000000')).respuestas.length, 0, 'suspendida: el bot no contesta');
-  await api('PATCH', `/admin/empresas/${tq.empresa.id}`, { token: hq.token, cuerpo: { activa: true, vence: new Date(Date.now() - 1000).toISOString() } });
-  assert.equal((await whatsapp('hola', '5215500000001')).respuestas.length, 0, 'plan vencido: no abre conversaciones nuevas');
-  assert.equal((await api('GET', '/gestion/plan', { token: T })).vigente, false);
-  await api('PATCH', `/admin/empresas/${tq.empresa.id}`, { token: hq.token, cuerpo: { plan: 'pro', sumarDias: 30 } });
+  await api('PATCH', `/admin/empresas/${tq.empresa.id}`, { token: hq.token, cuerpo: { activa: true } });
   assert.ok((await whatsapp('hola', '5215500000002')).respuestas.length > 0);
 
   // 15. Bitácora (solo admin de la empresa)

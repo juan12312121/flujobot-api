@@ -20,13 +20,11 @@ import { RespondedorIA } from '../application/services/RespondedorIA.js';
 import { Mensajero } from '../application/services/Mensajero.js';
 import { Programador } from '../application/services/Programador.js';
 import { Avisos } from '../application/services/Avisos.js';
-import { Limites } from '../application/services/Limites.js';
 import { Bitacora } from '../application/services/Bitacora.js';
 import { Cobros } from '../application/services/Cobros.js';
 import { Campanas } from '../application/services/Campanas.js';
 import { Seguimientos } from '../application/services/Seguimientos.js';
 import { Voz } from '../application/services/Voz.js';
-import { PagoPlataforma } from '../application/services/PagoPlataforma.js';
 import { RegistrarEmpresa } from '../application/use-cases/auth/RegistrarEmpresa.js';
 import { IniciarSesion } from '../application/use-cases/auth/IniciarSesion.js';
 import { ObtenerPerfil } from '../application/use-cases/auth/ObtenerPerfil.js';
@@ -80,7 +78,6 @@ export async function crearContenedor(config) {
     encuestas: new Repos.EncuestaRepository(),
     versiones: new Repos.VersionRepository(),
     actividad: new Repos.ActividadRepository(),
-    usos: new Repos.UsoRepository(),
   };
   const tokens = new JwtTokenService(config.JWT_SECRET, config.JWT_EXPIRA);
   const mercadopago = new MercadoPagoCliente();
@@ -120,18 +117,16 @@ export async function crearContenedor(config) {
 
   // Servicios de aplicación (el orden importa: unos usan a otros)
   const base = { ...repos, ...servicios };
-  const limites = new Limites(base);
   const bitacora = new Bitacora(base);
   const programador = new Programador(base);
   const mensajero = new Mensajero(base);
   const avisos = new Avisos({ ...base, mensajero, programador });
   const cobros = new Cobros({ ...base, avisos });
-  const respondedor = limites.conLimiteIA(new RespondedorIA({ ia: servicios.ia, productos: repos.productos }));
+  const respondedor = new RespondedorIA({ ia: servicios.ia, productos: repos.productos });
   const motor = new MotorDeFlujo({ productos: repos.productos, pedidos: repos.pedidos, citas: repos.citas, clienteWebhook: new FetchClienteWebhook(), respondedor, cobros });
-  const atender = new AtenderMensaje({ ...base, motor, limites, programador, avisos });
-  const campanasServicio = new Campanas({ ...base, mensajero, limites });
-  const seguimientos = new Seguimientos({ ...base, motor, atender, mensajero, limites });
-  const pagoPlataforma = new PagoPlataforma({ token: config.MP_PLATAFORMA_TOKEN, mercadopago, empresas: repos.empresas, apiUrl: config.API_URL_PUBLICA, urlFrontend: config.URL_FRONTEND });
+  const atender = new AtenderMensaje({ ...base, motor, programador, avisos });
+  const campanasServicio = new Campanas({ ...base, mensajero });
+  const seguimientos = new Seguimientos({ ...base, motor, atender, mensajero });
 
   programador
     .manejar('recordatorio_cita', (d) => avisos.enviarRecordatorio(d))
@@ -139,7 +134,7 @@ export async function crearContenedor(config) {
     .barrido('campanas', () => campanasServicio.atender())
     .barrido('carritos', () => seguimientos.carritosAbandonados());
 
-  const deps = { ...base, limites, bitacora, programador, mensajero, avisos, cobros, atender, campanasServicio, pagoPlataforma };
+  const deps = { ...base, bitacora, programador, mensajero, avisos, cobros, atender, campanasServicio };
 
   const casos = {
     registrarEmpresa: new RegistrarEmpresa(deps),

@@ -63,8 +63,6 @@ const esquema = z.object({
   META_APP_SECRET: z.string().optional(),
   META_VERIFY_TOKEN: z.string().optional(),
 
-  /** Cuenta de Mercado Pago de FlujoBot para cobrar los planes. Sin ella, el superadmin activa planes a mano. */
-  MP_PLATAFORMA_TOKEN: z.string().optional(),
 });
 
 const resultado = esquema
