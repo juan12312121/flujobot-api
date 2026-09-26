@@ -22,6 +22,21 @@ const EmpresaSchema = new Schema(
       colorPrimario: { type: String, default: '#12a150' },
       colorMenu: { type: String, default: '#0f1b17' },
       logoUrl: { type: String, default: '' },
+      /** Tema elegido (uno de fábrica o "personalizado"); los colores de arriba son los que se aplican. */
+      tema: { type: String, default: 'clasico' },
+      modo: { type: String, enum: ['claro', 'oscuro'], default: 'claro' },
+      /** Fondo del espacio de trabajo: nada, uno de la galería (id) o una imagen subida (URL). */
+      fondo: {
+        tipo: { type: String, enum: ['ninguno', 'galeria', 'imagen'], default: 'ninguno' },
+        valor: { type: String, default: '' },
+        /** 0-95: qué tanto se aclara/oscurece la imagen para que se lea el contenido. */
+        velo: { type: Number, default: 70 },
+        desenfoque: { type: Number, default: 0 },
+      },
+      /** Temas que armó la empresa para reusarlos. */
+      temasGuardados: { type: [Schema.Types.Mixed], default: [] },
+      /** Imágenes de fondo que ha subido (su propia galería). */
+      fondosSubidos: { type: [String], default: [] },
     },
     /** Palabras que usa el panel: "Servicios" en vez de "Productos", "Pacientes" en vez de "Clientes"... */
     terminos: { type: Schema.Types.Mixed, default: {} },

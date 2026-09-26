@@ -116,6 +116,21 @@ export const pedidos = {
 
 const TERMINOS = ['item', 'items', 'pedido', 'pedidos', 'cita', 'citas', 'cliente', 'clientes'];
 
+const fondo = z.object({
+  tipo: z.enum(['ninguno', 'galeria', 'imagen']),
+  valor: z.string().max(500).default(''),
+  velo: z.number().int().min(0).max(95).default(70),
+  desenfoque: z.number().int().min(0).max(20).default(0),
+});
+const temaGuardado = z.object({
+  id: z.string().regex(/^[\w-]{1,40}$/),
+  nombre: texto(40),
+  colorPrimario: color,
+  colorMenu: color,
+  modo: z.enum(['claro', 'oscuro']),
+  fondo,
+});
+
 export const empresa = {
   editar: z
     .object({
@@ -125,7 +140,18 @@ export const empresa = {
       moneda: z.string().length(3).toUpperCase(),
       zonaHoraria: z.string().refine(zonaValida, 'Zona horaria desconocida'),
       conocimiento: z.string().max(8000, 'Máximo 8,000 caracteres'),
-      marca: z.object({ colorPrimario: color, colorMenu: color, logoUrl: z.union([z.string().url('URL inválida'), z.literal('')]) }).partial(),
+      marca: z
+        .object({
+          colorPrimario: color,
+          colorMenu: color,
+          logoUrl: z.union([z.string().url('URL inválida'), z.literal('')]),
+          tema: z.string().max(60),
+          modo: z.enum(['claro', 'oscuro']),
+          fondo,
+          temasGuardados: z.array(temaGuardado).max(12, 'Máximo 12 temas guardados'),
+          fondosSubidos: z.array(z.string().url()).max(24, 'Máximo 24 fondos subidos'),
+        })
+        .partial(),
       terminos: z.object(Object.fromEntries(TERMINOS.map((t) => [t, texto(30)]))).partial(),
       modulos: z.object({ catalogo: z.boolean(), pedidos: z.boolean(), agenda: z.boolean() }).partial(),
       avisos: z

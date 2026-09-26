@@ -2,7 +2,7 @@ import { UseCase } from '../../shared/UseCase.js';
 import { NoConfiguradoError } from '../../shared/errors.js';
 
 /** Para qué es la imagen: define su carpeta dentro de la empresa. */
-export const USOS_IMAGEN = ['productos', 'logo', 'mensajes'];
+export const USOS_IMAGEN = ['productos', 'logo', 'mensajes', 'fondos'];
 
 /**
  * Firma para que el navegador suba una imagen DIRECTO a Cloudinary (el secreto nunca sale del servidor).
