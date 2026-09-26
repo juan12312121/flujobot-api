@@ -55,6 +55,13 @@ export const PALABRAS_ALTA = ['alta', 'suscribir', 'suscribirme'];
 export const PALABRAS_SI = ['1', 'si', 'confirmo', 'confirmar', 'ok', 'claro', 'va'];
 export const PALABRAS_NO = ['2', 'no', 'cancelo', 'cancelar', 'no puedo'];
 
+/** "Hola , tu pedido" → "Hola, tu pedido" cuando falta una variable (p. ej. no se sabe el nombre). */
+export const limpiarTexto = (t) =>
+  String(t)
+    .replace(/[ \t]+([,.!?])/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+
 export const textoAviso = (empresa, clave) => {
   const propio = empresa?.avisos?.textos?.[clave];
   return typeof propio === 'string' && propio.trim() ? propio : TEXTOS_AVISO[clave];

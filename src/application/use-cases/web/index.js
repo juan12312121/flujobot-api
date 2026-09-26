@@ -100,6 +100,7 @@ export class MensajesNuevosChatPublico extends UseCase {
     const corte = desde ? new Date(desde) : new Date(Date.now() - 60_000);
     const { mensajes, estado } = await this.conversaciones.mensajesDesde(bot.id, 'web', `web-${visitante}`, corte);
     return {
+      // Al visitante no se le muestra el correo del asesor ni el nombre interno de la campaña
       mensajes: mensajes.map((m) => ({ de: m.de, autor: m.de === 'asesor' ? 'Asesor' : '', texto: m.texto, url: m.url, fecha: m.fecha })),
       estado,
       fecha: mensajes.at(-1)?.fecha ?? corte,

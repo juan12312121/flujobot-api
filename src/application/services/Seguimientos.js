@@ -1,7 +1,7 @@
 import { Flujo } from '../../domain/flujo/Flujo.js';
 import { interpolar, dinero } from '../../domain/flujo/texto.js';
 import { totalCarrito } from '../../domain/pedidos/carrito.js';
-import { textoAviso } from '../../domain/avisos/textos.js';
+import { textoAviso, limpiarTexto } from '../../domain/avisos/textos.js';
 
 const HORA = 3600_000;
 
@@ -54,7 +54,7 @@ export class Seguimientos {
         };
         const plantilla = bot.recuperacion.texto?.trim() || textoAviso(empresa, 'carrito.abandonado');
         const r = await this.motor.recordar({ flujo, sesion: conv, contexto });
-        const respuestas = [{ tipo: 'texto', texto: interpolar(plantilla, variables) }, ...r.respuestas];
+        const respuestas = [{ tipo: 'texto', texto: limpiarTexto(interpolar(plantilla, variables)) }, ...r.respuestas];
         await this.#entregar(bot, conv, { ...r.sesion, carritoRecordado: this.reloj() }, respuestas);
         enviados++;
       }

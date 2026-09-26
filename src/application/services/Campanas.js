@@ -1,5 +1,5 @@
 import { interpolar } from '../../domain/flujo/texto.js';
-import { PIE_CAMPANA } from '../../domain/avisos/textos.js';
+import { PIE_CAMPANA, limpiarTexto } from '../../domain/avisos/textos.js';
 
 /** Canales donde se le puede escribir a alguien sin que acabe de escribir (Meta lo prohíbe fuera de 24 h). */
 export const CANALES_CAMPANA = ['whatsapp', 'telegram'];
@@ -99,7 +99,7 @@ export class Campanas {
     const fin = Math.min(indice + LOTE, lista.length);
     for (; indice < fin; indice++) {
       const d = lista[indice];
-      const texto = interpolar(c.texto, { nombre: primerNombre(d.nombre), empresa: empresa.nombre }) + PIE_CAMPANA;
+      const texto = limpiarTexto(interpolar(c.texto, { nombre: primerNombre(d.nombre), empresa: empresa.nombre })) + PIE_CAMPANA;
       const r = await this.mensajero.enviar({ bot, canal: d.canal, contacto: d.contacto, nombre: d.nombre, respuestas: [{ texto, url: c.imagenUrl || undefined }], de: 'sistema', autor: `Campaña: ${c.nombre}` });
       if (r.ok) enviados++;
       else fallidos++;

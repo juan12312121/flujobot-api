@@ -1,6 +1,6 @@
 import { interpolar, dinero } from '../../domain/flujo/texto.js';
 import { aLocal, nombreDia } from '../../domain/agenda/disponibilidad.js';
-import { textoAviso, ESTADOS_PEDIDO_AVISADOS, ESTADOS_CITA_AVISADOS } from '../../domain/avisos/textos.js';
+import { textoAviso, limpiarTexto, ESTADOS_PEDIDO_AVISADOS, ESTADOS_CITA_AVISADOS } from '../../domain/avisos/textos.js';
 import { CANALES_REALES } from '../shared/canales.js';
 
 const HORA = 3600_000;
@@ -39,8 +39,8 @@ export class Avisos {
   async #enviarPedido(empresa, pedido, clave, cambios = {}) {
     const bot = await this.bots.obtener(pedido.empresaId, pedido.botId);
     if (!bot) return { enviado: false, motivo: 'el bot ya no existe' };
-    const texto = interpolar(textoAviso(empresa, clave), this.#variablesPedido(empresa, pedido));
-    const r = await this.mensajero.enviar({ bot, canal: pedido.canal, contacto: pedido.contacto, nombre: pedido.nombreContacto, respuestas: [{ texto }], de: 'sistema', cambios });
+    const texto = limpiarTexto(interpolar(textoAviso(empresa, clave), this.#variablesPedido(empresa, pedido)));
+    const r = await this.mensajero.enviar({ bot, canal: pedido.canal, contacto: pedido.contacto, nombre: pedido.nombreContacto, respuestas: [{ texto }], de: 'sistema', autor: 'Aviso automático', cambios });
     return { enviado: r.ok, error: r.error };
   }
 
@@ -51,7 +51,8 @@ export class Avisos {
 
   #variablesPedido(empresa, pedido) {
     return {
-      nombre: primerNombre(pedido.nombreContacto),
+      // El nombre que dio en el flujo gana al de WhatsApp (el chat web no trae nombre)
+      nombre: primerNombre(pedido.datos?.cliente || pedido.datos?.nombre || pedido.nombreContacto),
       folio: pedido.folio,
       total: dinero(pedido.total, empresa?.moneda),
       pedido: (empresa?.terminos?.pedido ?? 'pedido').toLowerCase(),
@@ -128,8 +129,8 @@ export class Avisos {
       hora: l.hora,
       empresa: empresa?.nombre ?? '',
     };
-    const texto = interpolar(textoAviso(empresa, clave), variables).replace(/ {2,}/g, ' ');
-    const r = await this.mensajero.enviar({ bot, canal, contacto: cita.contacto, nombre: cita.nombreContacto, respuestas: [{ texto }], de: 'sistema', cambios });
+    const texto = limpiarTexto(interpolar(textoAviso(empresa, clave), variables));
+    const r = await this.mensajero.enviar({ bot, canal, contacto: cita.contacto, nombre: cita.nombreContacto, respuestas: [{ texto }], de: 'sistema', autor: 'Aviso automático', cambios });
     return { enviado: r.ok, error: r.error };
   }
 }
