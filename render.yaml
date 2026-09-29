@@ -44,6 +44,11 @@ services:
         generateValue: true
       - key: CRON_SECRETO
         generateValue: true
+      # Correos (recuperar contraseña, verificar correo): llave de https://resend.com
+      - key: RESEND_API_KEY
+        sync: false
+      - key: CORREO_REMITENTE
+        sync: false
       # Tu correo de FlujoBot para entrar al panel de superadministrador
       - key: SUPERADMINS
         sync: false

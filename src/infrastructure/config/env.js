@@ -45,6 +45,9 @@ const esquema = z.object({
 
   /** Llave para cifrar los secretos que pegan las empresas (pagos, Telegram, Meta). Sin ella se usa JWT_SECRET. */
   CIFRADO_LLAVE: z.string().min(16).optional(),
+  /** Correos (recuperar contraseña, verificar correo): https://resend.com (nivel gratuito). Sin llave se imprimen en consola. */
+  RESEND_API_KEY: z.string().optional(),
+  CORREO_REMITENTE: z.string().optional(),
   /** Correos con acceso al panel de superadministrador (separados por coma). */
   SUPERADMINS: z
     .string()

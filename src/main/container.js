@@ -13,6 +13,7 @@ import { MercadoPagoCliente, StripeCliente, eventoStripe, pagoIdMercadoPago } fr
 import { OpenRouterCliente } from '../infrastructure/ia/OpenRouterCliente.js';
 import { GroqTranscriptor } from '../infrastructure/ia/GroqTranscriptor.js';
 import { CloudinaryAlmacen } from '../infrastructure/storage/CloudinaryAlmacen.js';
+import { Correo } from '../infrastructure/correo/Correo.js';
 
 import { MotorDeFlujo } from '../application/services/MotorDeFlujo.js';
 import { AtenderMensaje } from '../application/services/AtenderMensaje.js';
@@ -29,6 +30,7 @@ import { RegistrosBot } from '../application/services/RegistrosBot.js';
 import { RegistrarEmpresa } from '../application/use-cases/auth/RegistrarEmpresa.js';
 import { IniciarSesion } from '../application/use-cases/auth/IniciarSesion.js';
 import { ObtenerPerfil } from '../application/use-cases/auth/ObtenerPerfil.js';
+import * as cuentaUC from '../application/use-cases/auth/cuenta.js';
 import * as usuariosUC from '../application/use-cases/usuarios/index.js';
 import * as productosUC from '../application/use-cases/productos/index.js';
 import * as botsUC from '../application/use-cases/bots/index.js';
@@ -49,15 +51,16 @@ import { ObtenerResultados } from '../application/use-cases/bots/ObtenerResultad
 import { GenerarFlujoConIA } from '../application/use-cases/asistente/GenerarFlujoConIA.js';
 import { GenerarTareaN8n, PublicarTareaN8n } from '../application/use-cases/asistente/tareas.js';
 
+import { UseCase } from '../application/shared/UseCase.js';
 import * as C from '../presentation/http/controllers/index.js';
 import * as R from '../presentation/http/routers/index.js';
-import { autenticar, soloSuperadmin, limiteAuth, limiteGeneral, limiteMotor, limiteIA, limiteChatPublico, limiteEntradas } from '../presentation/http/middlewares.js';
+import { autenticar, requierePermiso, soloSuperadmin, limiteAuth, limiteGeneral, limiteMotor, limiteIA, limiteChatPublico, limiteEntradas } from '../presentation/http/middlewares.js';
 
-/** Clase → instancia con la llave en camelCase: ListarBots → listarBots. */
+/** Clase → instancia con la llave en camelCase: ListarBots → listarBots (las funciones sueltas del módulo se ignoran). */
 const instanciar = (modulo, deps) =>
   Object.fromEntries(
     Object.entries(modulo)
-      .filter(([, Clase]) => typeof Clase === 'function')
+      .filter(([, Clase]) => typeof Clase === 'function' && Clase.prototype instanceof UseCase)
       .map(([nombre, Clase]) => [nombre[0].toLowerCase() + nombre.slice(1), new Clase(deps)]),
   );
 
@@ -94,6 +97,7 @@ export async function crearContenedor(config) {
     telegram: new TelegramCliente(),
     meta: new MetaCliente(),
     mercadopago,
+    correo: new Correo({ apiKey: config.RESEND_API_KEY, remitente: config.CORREO_REMITENTE }),
     stripe: new StripeCliente(),
     publicador: new N8nPublicador({
       n8nUrl: config.N8N_URL,
@@ -144,6 +148,7 @@ export async function crearContenedor(config) {
     registrarEmpresa: new RegistrarEmpresa(deps),
     iniciarSesion: new IniciarSesion(deps),
     obtenerPerfil: new ObtenerPerfil(deps),
+    ...instanciar(cuentaUC, deps),
     procesarMensajeEntrante: new ProcesarMensajeEntrante(deps),
     obtenerResumen: new ObtenerResumen(deps),
     generarFlujoConIA: new GenerarFlujoConIA(deps),
@@ -169,21 +174,23 @@ export async function crearContenedor(config) {
 
   const sesion = autenticar(tokens);
   const conSesion = { middlewares: [limiteGeneral, sesion] };
+  /** Con sesión y además el rol debe tener esa sección (cajero, recepción, repartidor...). */
+  const con = (seccion) => ({ middlewares: [limiteGeneral, sesion, requierePermiso(seccion)] });
   const rutas = [
     ['/auth', new R.AuthRouter(new C.AuthController(casos), { autenticar: sesion, limiteAuth }).registrar()],
     ['/usuarios', new R.UsuarioRouter(new C.UsuarioController(casos), conSesion).registrar()],
-    ['/productos', new R.ProductoRouter(new C.ProductoController(casos), conSesion).registrar()],
-    ['/bots', new R.BotRouter(new C.BotController(casos), conSesion).registrar()],
-    ['/conversaciones', new R.ConversacionRouter(new C.ConversacionController(casos), conSesion).registrar()],
-    ['/pedidos', new R.PedidoRouter(new C.PedidoController(casos), conSesion).registrar()],
+    ['/productos', new R.ProductoRouter(new C.ProductoController(casos), con('catalogo')).registrar()],
+    ['/bots', new R.BotRouter(new C.BotController(casos), con('bots')).registrar()],
+    ['/conversaciones', new R.ConversacionRouter(new C.ConversacionController(casos), con('conversaciones')).registrar()],
+    ['/pedidos', new R.PedidoRouter(new C.PedidoController(casos), con('pedidos')).registrar()],
     ['/giros', new R.GiroRouter(new C.EmpresaController(casos)).registrar()],
     ['/empresa', new R.EmpresaRouter(new C.EmpresaController(casos), conSesion).registrar()],
-    ['/citas', new R.CitaRouter(new C.CitaController(casos), conSesion).registrar()],
-    ['/campanas', new R.CampanaRouter(new C.CampanaController(casos), conSesion).registrar()],
-    ['/modulos', new R.ModuloRouter(new C.ModuloController(casos), conSesion).registrar()],
-    ['/gestion', new R.GestionRouter(new C.GestionController(casos), conSesion).registrar()],
+    ['/citas', new R.CitaRouter(new C.CitaController(casos), con('agenda')).registrar()],
+    ['/campanas', new R.CampanaRouter(new C.CampanaController(casos), con('campanas')).registrar()],
+    ['/modulos', new R.ModuloRouter(new C.ModuloController(casos), con('modulos')).registrar()],
+    ['/gestion', new R.GestionRouter(new C.GestionController(casos), con('gestion')).registrar()],
     ['/admin', new R.AdminRouter(new C.AdminController(casos), { middlewares: [limiteGeneral, sesion, soloSuperadmin(config.SUPERADMINS)] }).registrar()],
-    ['/asistente', new R.AsistenteRouter(new C.AsistenteController(casos), { middlewares: [limiteIA, sesion] }).registrar()],
+    ['/asistente', new R.AsistenteRouter(new C.AsistenteController(casos), { middlewares: [limiteIA, sesion, requierePermiso('bots')] }).registrar()],
     ['/archivos', new R.ArchivoRouter(new C.ArchivoController(casos), conSesion).registrar()],
     ['/tablero', new R.TableroRouter(new C.TableroController(casos), conSesion).registrar()],
     ['/motor', new R.MotorRouter(new C.MotorController(casos), { middlewares: [limiteMotor] }).registrar()],

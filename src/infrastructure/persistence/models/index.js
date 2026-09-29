@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { CANALES, ESTADOS_PEDIDO } from '../../../domain/shared/catalogos.js';
+import { CLAVES_ROL } from '../../../domain/permisos/roles.js';
 
 const { Schema, model, Types } = mongoose;
 const ref = (nombre) => ({ type: Types.ObjectId, ref: nombre, required: true, index: true });
@@ -84,7 +85,13 @@ const UsuarioSchema = new Schema(
     nombre: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
-    rol: { type: String, enum: ['admin', 'editor'], default: 'editor' },
+    rol: { type: String, enum: CLAVES_ROL, default: 'editor' },
+    telefono: { type: String, default: '' },
+    emailVerificado: { type: Boolean, default: false },
+    /** Enlace de un solo uso (recuperar contraseña o verificar correo): solo se guarda su huella. */
+    tokenTipo: { type: String, default: '', select: false },
+    tokenHash: { type: String, default: '', select: false },
+    tokenExpira: { type: Date, default: null, select: false },
   },
   { timestamps: true },
 );
@@ -225,6 +232,9 @@ const PedidoSchema = new Schema(
     },
     /** Se registró después de recordarle el carrito abandonado. */
     recuperado: { type: Boolean, default: false },
+    /** Repartidor asignado (usuario con rol repartidor). */
+    repartidorId: { type: String, default: '' },
+    repartidorNombre: { type: String, default: '' },
   },
   { timestamps: true, minimize: false },
 );

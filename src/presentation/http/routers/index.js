@@ -11,12 +11,16 @@ export class AuthRouter extends BaseRouter {
     this.post('/registro', this.limiteAuth, 'registrar');
     this.post('/login', this.limiteAuth, 'login');
     this.get('/perfil', this.autenticar, 'perfil');
+    this.post('/recuperar', this.limiteAuth, 'recuperar');
+    this.post('/restablecer', this.limiteAuth, 'restablecer');
+    this.post('/verificar', this.limiteAuth, 'verificar');
+    this.post('/verificar/reenviar', this.limiteAuth, this.autenticar, 'reenviar');
   }
 }
 
 export class UsuarioRouter extends BaseRouter {
   rutas() {
-    this.crud(':usuarioId', ['listar', 'crear', 'borrar']);
+    this.crud(':usuarioId', ['listar', 'crear', 'editar', 'borrar']);
   }
 }
 
@@ -63,6 +67,7 @@ export class PedidoRouter extends BaseRouter {
   rutas() {
     this.patch('/:pedidoId/estado', 'cambiarEstado');
     this.post('/:pedidoId/pagado', 'pagado');
+    this.put('/:pedidoId/repartidor', 'repartidor');
     this.crud(':pedidoId', ['listar']);
   }
 }

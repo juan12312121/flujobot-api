@@ -86,6 +86,27 @@ export class UsuarioRepository extends MongoRepository {
     const { passwordHash: _, ...usuario } = await super.crear(empresaId, datos);
     return usuario;
   }
+
+  async guardarToken(id, { tipo, hash, expira }) {
+    await UsuarioModel.updateOne({ _id: id }, { $set: { tokenTipo: tipo, tokenHash: hash, tokenExpira: expira } });
+  }
+
+  /** Usuario con ese enlace vigente (y lo consume: un enlace sirve una sola vez). */
+  async porToken(tipo, hash) {
+    const doc = await UsuarioModel.findOneAndUpdate(
+      { tokenTipo: tipo, tokenHash: hash, tokenExpira: { $gt: new Date() } },
+      { $set: { tokenTipo: '', tokenHash: '', tokenExpira: null } },
+    ).lean();
+    return aObjeto(doc);
+  }
+
+  async cambiarPassword(id, passwordHash) {
+    await UsuarioModel.updateOne({ _id: id }, { $set: { passwordHash, emailVerificado: true } });
+  }
+
+  async marcarVerificado(id) {
+    await UsuarioModel.updateOne({ _id: id }, { $set: { emailVerificado: true } });
+  }
 }
 
 export class ProductoRepository extends MongoRepository {

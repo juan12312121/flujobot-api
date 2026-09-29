@@ -5,11 +5,16 @@ export class AuthController extends BaseController {
   registrar = this.accion('registrarEmpresa', { body: esquemas.auth.registro, status: 201 });
   login = this.accion('iniciarSesion', { body: esquemas.auth.login });
   perfil = this.accion('obtenerPerfil');
+  recuperar = this.accion('solicitarRecuperacion', { body: esquemas.auth.recuperar });
+  restablecer = this.accion('restablecerPassword', { body: esquemas.auth.restablecer });
+  verificar = this.accion('verificarCorreo', { body: esquemas.auth.verificar });
+  reenviar = this.accion('reenviarVerificacion');
 }
 
 export class UsuarioController extends BaseController {
   listar = this.accion('listarUsuarios');
   crear = this.accion('crearUsuario', { body: esquemas.usuarios.crear, status: 201 });
+  editar = this.accion('editarUsuario', { body: esquemas.usuarios.editar });
   borrar = this.accion('borrarUsuario', { status: 204 });
 }
 
@@ -58,6 +63,7 @@ export class PedidoController extends BaseController {
   listar = this.accion('listarPedidos', { query: esquemas.pedidos.filtro });
   cambiarEstado = this.accion('cambiarEstadoPedido', { body: esquemas.pedidos.estado });
   pagado = this.accion('marcarPedidoPagado');
+  repartidor = this.accion('asignarRepartidor', { body: esquemas.pedidos.repartidor });
 }
 
 export class TableroController extends BaseController {

@@ -1,12 +1,13 @@
 import { UseCase } from '../../shared/UseCase.js';
 import { ConflictoError } from '../../shared/errors.js';
 import { configuracionInicial } from '../../../domain/empresa/giros.js';
+import { enviarVerificacion } from './cuenta.js';
 
 /** Alta de una empresa nueva con su primer usuario (admin). Es la puerta de entrada al sistema multiempresa. */
 export class RegistrarEmpresa extends UseCase {
-  constructor({ empresas, usuarios, hasher, tokens, generador, superadmins = [] }) {
+  constructor({ empresas, usuarios, hasher, tokens, generador, correo, urlFrontend, superadmins = [] }) {
     super();
-    Object.assign(this, { empresas, usuarios, hasher, tokens, generador, superadmins });
+    Object.assign(this, { empresas, usuarios, hasher, tokens, generador, correo, urlFrontend, superadmins });
   }
 
   async ejecutar({ empresa: nombreEmpresa, nombre, email, password, moneda, giro }) {
@@ -20,6 +21,7 @@ export class RegistrarEmpresa extends UseCase {
     });
     try {
       const usuario = await this.usuarios.crear(empresa.id, { nombre, email, passwordHash: await this.hasher.hash(password), rol: 'admin' });
+      if (this.correo) enviarVerificacion(this, usuario).catch((e) => console.warn('No se envió la verificación:', e.message));
       return { token: this.tokens.firmar({ ...usuario, empresaId: empresa.id }), usuario: { ...usuario, esSuperadmin: this.superadmins.includes(usuario.email) }, empresa };
     } catch (e) {
       await this.empresas.borrar(empresa.id); // no dejar empresas huérfanas si falla el usuario

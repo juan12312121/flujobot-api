@@ -2,6 +2,15 @@ import rateLimit from 'express-rate-limit';
 import { ApiResponse } from './ApiResponse.js';
 import { NoAutenticadoError } from '../../application/shared/errors.js';
 import { PermisoDenegadoError } from '../../domain/shared/errors.js';
+import { puede, ROLES } from '../../domain/permisos/roles.js';
+
+/** Solo los roles que tienen esa sección (domain/permisos/roles.js). Va después de autenticar. */
+export const requierePermiso = (seccion) => (req, _res, next) => {
+  if (!puede(req.actor?.rol, seccion)) {
+    return next(new PermisoDenegadoError(`Tu rol (${ROLES[req.actor?.rol]?.nombre ?? req.actor?.rol}) no tiene acceso a esta sección`));
+  }
+  next();
+};
 
 /**
  * Exige "Authorization: Bearer <token>" y deja { id, empresaId, rol, email } en req.actor.

@@ -7,6 +7,7 @@ import { ESTADOS_PEDIDO, CANALES } from '../../../domain/shared/catalogos.js';
 import { SEGMENTOS } from '../../../application/services/Campanas.js';
 import { TEXTOS_AVISO } from '../../../domain/avisos/textos.js';
 import { TIPOS_CAMPO, PLANTILLAS_MODULO } from '../../../domain/modulos/modulos.js';
+import { CLAVES_ROL } from '../../../domain/permisos/roles.js';
 
 const texto = (max = 200) => z.string().trim().min(1, 'Requerido').max(max);
 const email = z.string().trim().toLowerCase().email('Correo inválido');
@@ -38,10 +39,17 @@ export const auth = {
     giro: giro.default('otro'),
   }),
   login: z.object({ email, password: z.string().min(1) }),
+  recuperar: z.object({ email }),
+  restablecer: z.object({ token: z.string().min(20).max(200), password }),
+  verificar: z.object({ token: z.string().min(20).max(200) }),
 };
 
 export const usuarios = {
-  crear: z.object({ nombre: texto(80), email, password, rol: z.enum(['admin', 'editor']).default('editor') }),
+  crear: z.object({ nombre: texto(80), email, password, rol: z.enum(CLAVES_ROL).default('editor'), telefono: z.string().max(20).default('') }),
+  editar: z
+    .object({ nombre: texto(80), rol: z.enum(CLAVES_ROL), telefono: z.string().max(20) })
+    .partial()
+    .refine((o) => Object.keys(o).length > 0, 'Nada que cambiar'),
 };
 
 const producto = z.object({
@@ -111,8 +119,10 @@ export const pedidos = {
     estado: z.enum(ESTADOS_PEDIDO).optional(),
     botId: idMongo.optional(),
     pago: z.enum(['sin_cobro', 'pendiente', 'pagado', 'fallido']).optional(),
+    repartidorId: idMongo.optional(),
   }),
   estado: z.object({ estado: z.enum(ESTADOS_PEDIDO), avisar: z.boolean().default(true) }),
+  repartidor: z.object({ usuarioId: z.string().regex(/^[0-9a-f]{24}$/i).nullable() }),
 };
 
 const TERMINOS = ['item', 'items', 'pedido', 'pedidos', 'cita', 'citas', 'cliente', 'clientes'];
